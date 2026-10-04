@@ -67,6 +67,12 @@ def _hf(repo: str, path: str, sha256: str, size: int | None = None) -> RemoteFil
 
 
 _NEMOTRON_160 = "csukuangfj2/sherpa-onnx-nemotron-speech-streaming-en-0.6b-160ms-int8-2026-04-25"
+_NEMOTRON_560 = "csukuangfj2/sherpa-onnx-nemotron-speech-streaming-en-0.6b-560ms-int8-2026-04-25"
+_GH_ASR = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/{name}"
+
+
+def _gh_asr(name: str, sha256: str) -> RemoteFile:
+    return RemoteFile(_GH_ASR.format(name=name), name, sha256)
 
 REGISTRY: tuple[Asset, ...] = (
     Asset(
@@ -113,6 +119,78 @@ REGISTRY: tuple[Asset, ...] = (
                 "test_wavs/trans.txt",
                 "b9ac44e7b794abb1a2d5faf0005e98a665971e7ac2ed15435832cc34edaa9100",
                 449,
+            ),
+        ),
+    ),
+    Asset(
+        id="nemotron-en-560ms-int8",
+        kind="asr",
+        title="NVIDIA Nemotron Speech Streaming EN 0.6B (560 ms chunks, int8, sherpa-onnx)",
+        license="NVIDIA Open Model License",
+        source="https://huggingface.co/nvidia/nemotron-speech-streaming-en-0.6b",
+        files=(
+            _hf(
+                _NEMOTRON_560,
+                "encoder.int8.onnx",
+                "7d932213491ad355c6e5576705dc3494731a52af87d7a1b954559340147909d8",
+            ),
+            _hf(
+                _NEMOTRON_560,
+                "decoder.int8.onnx",
+                "0be9702c2f427a2b6bb241d298e0d3836a558de1f5b9fd3018f1cce6e2b3fa98",
+            ),
+            _hf(
+                _NEMOTRON_560,
+                "joiner.int8.onnx",
+                "a35eac38a22ebceb04d230ed7afe0d68f446ba6914a036b97f14fece95967e23",
+            ),
+            _hf(
+                _NEMOTRON_560,
+                "tokens.txt",
+                "dc0b4584ab2e4ddbf888425c076c61b736e7356a015250db7d307e6f1a8188ff",
+                8952,
+            ),
+        ),
+    ),
+    Asset(
+        id="moonshine-v2-base-en",
+        kind="asr",
+        title="Moonshine v2 base English (quantized, sherpa-onnx)",
+        license="MIT (see LICENSE in the archive)",
+        source="https://github.com/moonshine-ai/moonshine",
+        extract=True,
+        files=(
+            _gh_asr(
+                "sherpa-onnx-moonshine-base-en-quantized-2026-02-27.tar.bz2",
+                "43232c1d13013d37317163baec3135bd771a186a4356f28c889bab453bb0e891",
+            ),
+        ),
+    ),
+    Asset(
+        id="moonshine-v2-tiny-en",
+        kind="asr",
+        title="Moonshine v2 tiny English (quantized, sherpa-onnx)",
+        license="MIT (see LICENSE in the archive)",
+        source="https://github.com/moonshine-ai/moonshine",
+        extract=True,
+        files=(
+            _gh_asr(
+                "sherpa-onnx-moonshine-tiny-en-quantized-2026-02-27.tar.bz2",
+                "9ec31b342d8fa3240c3b81b8f82e1cf7e3ac467c93ca5a999b741d5887164f8d",
+            ),
+        ),
+    ),
+    Asset(
+        id="kroko-en-streaming",
+        kind="asr",
+        title="Kroko streaming Zipformer English (sherpa-onnx)",
+        license="see model card",
+        source="https://huggingface.co/Banafo/Kroko-ASR",
+        extract=True,
+        files=(
+            _gh_asr(
+                "sherpa-onnx-streaming-zipformer-en-kroko-2025-08-06.tar.bz2",
+                "c8676e5ff9ac2a85296e53ee0fd4d5fb1db6770e7a7647166eeafe349ade6834",
             ),
         ),
     ),
