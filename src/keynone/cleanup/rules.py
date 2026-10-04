@@ -106,6 +106,12 @@ _ABBREVIATIONS = frozenset(
 )
 
 
+def ends_with_abbreviation(text: str) -> bool:
+    """True if ``text`` ends with e.g. "Dr." / "p.m." rather than a sentence end."""
+    tokens = text.split()
+    return bool(tokens) and tokens[-1].lower().rstrip(".") in _ABBREVIATIONS
+
+
 def _collapse_punct(m: re.Match[str]) -> str:
     marks = re.sub(r"\s+", "", m.group(0))
     for mark in "?!.":
