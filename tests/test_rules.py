@@ -190,6 +190,59 @@ def test_not_a_list(text: str) -> None:
     assert rules.format_spoken_list(text) is None
 
 
+# --------------------------------------------------------------------------- self-corrections
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("Let's push the release to Thursday, no, actually Friday, so QA has more time.",
+         "Let's push the release to Friday, so QA has more time."),
+        ("Book a table for four, sorry, five people at 7.", "Book a table for five people at 7."),
+        ("Send the invoice to accounting, I mean to finance, before noon.",
+         "Send the invoice to finance, before noon."),
+        ("The meeting is in room 204, no wait, room 205.", "The meeting is in room 205."),
+        ("Remind me to call mom at five thirty, no, six thirty tonight.",
+         "Remind me to call mom at six thirty tonight."),
+        ("The total is fifteen hundred dollars. Sorry, fifteen hundred and fifty dollars.",
+         "The total is fifteen hundred and fifty dollars."),
+        ("We're flying out on the 12th. Actually, make it the 14th.",
+         "We're flying out on the 14th."),
+        ("Tell Priya the deadline is Monday, or rather Tuesday morning.",
+         "Tell Priya the deadline is Tuesday morning."),
+        ("Can you grab coffee, no, tea for me on your way in?",
+         "Can you grab tea for me on your way in?"),
+        ("The link expires in 24 hours, no, 48 hours.", "The link expires in 48 hours."),
+        ("Set a timer for 20 minutes, no, 30.", "Set a timer for 30 minutes."),
+        ("I'll send it tomorrow. Actually, scratch that, I'll send it tonight.",
+         "I'll send it tonight."),
+        ("Let's meet at 3 p.m., no, wait, 4 p.m. at the cafe.", "Let's meet at 4 p.m. at the cafe."),
+        ("I'll be there by 6. Sorry, I meant 7, because the train is late.",
+         "I'll be there by 7, because the train is late."),
+        ("Second, update the deck, no wait, update the budget sheet.",
+         "Second, update the budget sheet."),
+    ],
+)
+def test_corrections_resolved(raw: str, expected: str) -> None:
+    assert rules.resolve_corrections(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "We're late, sorry, traffic was bad.",
+        "Invite Alex and Jordan, actually just Jordan, to the review.",
+        "Can you, I mean, could you send the slides?",
+        "I said no, and I mean it.",
+        "Did you finish it? No, I didn't.",
+        "It's, I mean, pretty good.",
+        "Sorry for the late reply.",
+    ],
+)
+def test_ambiguous_corrections_left_alone(text: str) -> None:
+    assert rules.resolve_corrections(text) == text
+
+
 # --------------------------------------------------------------------------- cues
 
 

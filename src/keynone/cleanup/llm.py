@@ -27,15 +27,31 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from keynone.cleanup.prompts import PromptBuilder, TemplateFamily
+from keynone.assets import find_file, get_asset
+from keynone.cleanup.prompts import PromptBuilder, PromptStyle, TemplateFamily
+from keynone.paths import Paths
 
 log = logging.getLogger(__name__)
+
+LLAMA_RUNTIME_ID = "llama.cpp-b11398-cpu-x64"
 
 # Chat-template family per registered model id.
 MODEL_FAMILIES: dict[str, TemplateFamily] = {
     "lfm2.5-1.2b-instruct-q4km": "chatml",
     "qwen3.5-0.8b-q4km": "qwen",
+    "qwen3.5-2b-q4km": "qwen",
 }
+
+
+def llm_model_path(model_id: str, paths: Paths) -> Path:
+    asset = get_asset(model_id)
+    if asset.kind != "llm":
+        raise LlmError(f"{model_id} is not an LLM asset")
+    return asset.directory(paths) / asset.files[0].dest
+
+
+def llama_server_exe(paths: Paths) -> Path:
+    return find_file(get_asset(LLAMA_RUNTIME_ID).directory(paths), "llama-server.exe")
 
 
 class LlmError(RuntimeError):
@@ -331,3 +347,31 @@ class LlmPolisher:
     def close(self) -> None:
         with contextlib.suppress(Exception):
             self.server.close()
+
+
+def build_polisher(
+    model_id: str,
+    paths: Paths,
+    *,
+    threads: int = 4,
+    context: int = 2048,
+    dictionary_words: tuple[str, ...] = (),
+    style: PromptStyle = "doc",
+    job: Any | None = None,
+) -> LlmPolisher:
+    """Create and start (non-blocking) a polisher for a registered model."""
+    server = LlamaServer(
+        exe=llama_server_exe(paths),
+        model=llm_model_path(model_id, paths),
+        threads=threads,
+        context=context,
+        slot_dir=paths.cache / "llm-slots",
+        log_file=paths.logs / "llama-server.log",
+    )
+    server.start(job)
+    builder = PromptBuilder(
+        family=MODEL_FAMILIES.get(model_id, "chatml"),
+        style=style,
+        dictionary_words=dictionary_words,
+    )
+    return LlmPolisher(server, builder)

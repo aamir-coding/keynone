@@ -226,6 +226,21 @@ REGISTRY: tuple[Asset, ...] = (
         ),
     ),
     Asset(
+        id="qwen3.5-2b-q4km",
+        kind="llm",
+        title="Qwen3.5 2B (GGUF Q4_K_M, Apache-2.0) - higher quality, slower",
+        license="Apache-2.0",
+        source="https://huggingface.co/unsloth/Qwen3.5-2B-GGUF",
+        files=(
+            _hf(
+                "unsloth/Qwen3.5-2B-GGUF",
+                "Qwen3.5-2B-Q4_K_M.gguf",
+                "aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223",
+                1_280_835_840,
+            ),
+        ),
+    ),
+    Asset(
         id="llama.cpp-b11398-cpu-x64",
         kind="runtime",
         title="llama.cpp b11398 Windows CPU x64 (llama-server)",

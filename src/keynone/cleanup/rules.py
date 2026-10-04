@@ -102,7 +102,7 @@ def apply_dictionary(
 # --------------------------------------------------------------------------- tidy-up
 
 _ABBREVIATIONS = frozenset(
-    "mr mrs ms dr st jr sr vs etc e.g i.e approx no fig dept inc ltd co prof".split()
+    "mr mrs ms dr st jr sr vs etc e.g i.e approx no fig dept inc ltd co prof a.m p.m".split()
 )
 
 
@@ -428,6 +428,144 @@ def starts_first_list_item(text: str) -> bool:
     if m:
         return _marker_rank(_marker_text(m)) == 1
     return bool(_BULLET_RE.match(text))
+
+
+# --------------------------------------------------------------------------- self-corrections
+#
+# "<A>, no, <B>" / "<A>. Sorry, <B>": the speaker replaces the tail of A with B.
+# We only resolve when the replaced span X (the tail of A) can be identified
+# confidently; anything ambiguous is left for the LLM (or left as dictated).
+
+_STRONG_CUE = (
+    r"(?:no,?\s+wait|wait,?\s+no|no,?\s+no|no|sorry|i\s+mean(?:t)?|or\s+rather|"
+    r"correction|scratch\s+that|make\s+(?:that|it))"
+)
+_CUE_TAIL = r"(?:\s*[,:]?\s+(?:actually,?\s+)?(?:i\s+mean(?:t)?,?\s+)?(?:make\s+(?:that|it)\s+)?)"
+_INLINE_CORRECTION_RE = re.compile(rf"(?i),\s*{_STRONG_CUE}{_CUE_TAIL}")
+_LEADING_CORRECTION_RE = re.compile(rf"(?i)^(?:actually,?\s+)?{_STRONG_CUE}{_CUE_TAIL}")
+
+_NUMBER_TOKENS = frozenset(
+    """zero oh one two three four five six seven eight nine ten eleven twelve thirteen fourteen
+    fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty
+    ninety hundred thousand million billion half quarter noon midnight""".split()
+)
+_DAY_TOKENS = frozenset(
+    "monday tuesday wednesday thursday friday saturday sunday today tomorrow tonight".split()
+)
+_MONTH_TOKENS = frozenset(
+    "january february march april may june july august september october november december".split()
+)
+_FUNCTION_WORDS = frozenset(
+    """a an the this that these those my your his her its our their i you he she we they it me
+    him us them is are was were be been am do does did have has had will would can could should
+    may might must to of in on at for by with from and or but so if as not no yes just also
+    very really there here it's i'm we're they're you're i'll we'll i've let's""".split()
+)
+_JOINERS = frozenset(
+    "for to at in on by with from and or please instead tomorrow today tonight".split()
+)
+
+
+def _norm(word: str) -> str:
+    return word.lower().strip(".,;:!?\"'()“”‘’")
+
+
+def _token_type(word: str) -> str | None:
+    if any(c.isdigit() for c in word) or word in _NUMBER_TOKENS or word in _ORDINALS:
+        return "number"
+    if word in _DAY_TOKENS:
+        return "day"
+    if word in _MONTH_TOKENS:
+        return "month"
+    return None
+
+
+def _replace_tail(a: str, b: str) -> str | None:
+    """Return A with its corrected tail replaced by B, or None if unsure."""
+    a_spans = list(re.finditer(r"\S+", a))
+    b_words = [_norm(w) for w in b.split()]
+    b_words = [w for w in b_words if w]
+    if not a_spans or not b_words:
+        return None
+    a_words = [_norm(m.group()) for m in a_spans]
+    n = len(a_words)
+    tail_start = max(0, n - 8)
+    b0 = b_words[0]
+    b0_type = _token_type(b0)
+
+    def splice(start: int) -> str:
+        return (a[: a_spans[start].start()] + b).strip()
+
+    # R1: B restarts with a word found near the end of A ("room 204, no wait, room 205").
+    for i in range(n - 1, tail_start - 1, -1):
+        if a_words[i] == b0:
+            return splice(i)
+    # R2: a new value followed by a repeated unit ("24 hours, no, 48 hours").
+    if b0_type == "number" and len(b_words) > 1:
+        for q in range(n - 1, max(tail_start, 1) - 1, -1):
+            if a_words[q] == b_words[1] and _token_type(a_words[q - 1]) == "number":
+                start = q - 1
+                while start > 0 and _token_type(a_words[start - 1]) == "number":
+                    start -= 1
+                return splice(start)
+    if b0_type is not None:
+        # R3a: a lone value replaces the latest value of the same kind, keeping units
+        # ("for 20 minutes, no, 30" -> "for 30 minutes").
+        if len(b_words) == 1:
+            for end in range(n - 1, max(n - 4, -1), -1):
+                if _token_type(a_words[end]) == b0_type:
+                    start = end
+                    while start > 0 and _token_type(a_words[start - 1]) == b0_type:
+                        start -= 1
+                    head = a[: a_spans[start].start()]
+                    rest = a[a_spans[end].end() :]
+                    value = b.strip().rstrip(".,;:!?")
+                    tail = b.strip()[len(value) :]
+                    return (head + value + rest.rstrip(".,;:!?") + tail).strip()
+        # R3b: A ends with a value of the same kind ("Monday, or rather Tuesday morning").
+        if _token_type(a_words[-1]) == b0_type:
+            start = n - 1
+            while start > 0 and _token_type(a_words[start - 1]) == b0_type:
+                start -= 1
+            return splice(start)
+    # R4: one content word swapped for another ("grab coffee, no, tea for me").
+    last = a_words[-1]
+    first_raw = b.split()[0]
+    closes = first_raw.endswith((",", ".", "?", "!"))
+    if (
+        last not in _FUNCTION_WORDS
+        and b0 not in _FUNCTION_WORDS
+        and (len(b_words) == 1 or closes or b_words[1] in _JOINERS)
+    ):
+        return splice(n - 1)
+    return None
+
+
+def resolve_corrections(text: str) -> str:
+    """Apply confidently-resolvable spoken self-corrections."""
+    sentences = split_sentences(text)
+    out: list[str] = []
+    for sentence in sentences:
+        current = sentence
+        # Cross-sentence: "... on the 12th. Actually, make it the 14th."
+        m = _LEADING_CORRECTION_RE.match(current)
+        if m and out and not out[-1].startswith("\n"):
+            replaced = _replace_tail(out[-1], current[m.end() :])
+            if replaced:
+                out[-1] = replaced
+                continue
+        # In-sentence: "... at 3, no wait, 4 p.m. ..."
+        for _ in range(3):
+            m = _INLINE_CORRECTION_RE.search(current)
+            if not m or m.start() == 0:
+                break
+            replaced = _replace_tail(current[: m.start()], current[m.end() :])
+            if not replaced:
+                break
+            current = replaced
+        out.append(current)
+    result = join_sentences(out)
+    return _capitalize(result) if result != text else text
 
 
 # --------------------------------------------------------------------------- facade

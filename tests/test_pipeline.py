@@ -41,11 +41,18 @@ def test_rules_only_dictation() -> None:
     assert text == "I think we should ship it. It looks good."
 
 
-def test_cross_sentence_correction_is_merged_for_the_llm() -> None:
-    merged = "Let's meet on Tuesday. Actually, make that Wednesday."
-    polisher = FakePolisher({merged: "Let's meet on Wednesday."})
+def test_simple_correction_resolved_without_llm() -> None:
+    polisher = FakePolisher()
     text, _ = run(["Let's meet on Tuesday.", "Actually, make that Wednesday."], polisher)
     assert text == "Let's meet on Wednesday."
+    assert polisher.calls == []
+
+
+def test_cross_sentence_correction_is_merged_for_the_llm() -> None:
+    merged = "Invite Alex and Jordan. Actually, just Jordan."
+    polisher = FakePolisher({merged: "Invite just Jordan."})
+    text, _ = run(["Invite Alex and Jordan.", "Actually, just Jordan."], polisher)
+    assert text == "Invite just Jordan."
     assert polisher.calls[-1] == merged
 
 
@@ -66,8 +73,9 @@ def test_guard_rejection_falls_back_to_rules() -> None:
 
 def test_llm_timeout_falls_back_to_rules() -> None:
     polisher = FakePolisher(delay=1.0)
-    text, pipeline = run(["Send it Monday, no, Tuesday."], polisher, timeout=0.2)
-    assert text == "Send it Monday, no, Tuesday."
+    source = "Invite Alex and Jordan, actually just Jordan, to the review."
+    text, pipeline = run([source], polisher, timeout=0.2)
+    assert text == source
     assert "timeout" in pipeline._result.rejections
 
 

@@ -62,7 +62,6 @@ class CleanupResult:
 @dataclass
 class _Unit:
     raw: str
-    needs_llm: bool
     version: int = 0
     done_version: int = -1
     polished: str = ""
@@ -101,9 +100,11 @@ class CleanupPipeline:
     def _needs_llm(self, text: str) -> bool:
         if self.polisher is None or self.settings.llm_mode == "off":
             return False
+        correction = rules.has_correction_cue(text)
         if self.settings.llm_mode == "always":
-            return True
-        return rules.has_correction_cue(text) or rules.has_soft_fillers(text)
+            # Deterministic list formatting beats letting the LLM restyle a list.
+            return correction or rules.format_spoken_list(text) is None
+        return correction or rules.has_soft_fillers(text)
 
     def add_sentence(self, sentence: str) -> None:
         """Feed one finished ASR sentence (raw, punctuated model output)."""
@@ -116,7 +117,7 @@ class CleanupPipeline:
             if body.strip("\n"):
                 self._append_locked(body)
             elif body:  # only line breaks
-                self._units.append(_Unit(raw=body, needs_llm=False, is_break=True))
+                self._units.append(_Unit(raw=body, is_break=True))
             self._cond.notify_all()
         self._notify()
 
@@ -134,9 +135,8 @@ class CleanupPipeline:
             ):
                 prev.raw = joined
                 prev.version += 1
-                prev.needs_llm = self._needs_llm(joined)
                 return
-        self._units.append(_Unit(raw=body, needs_llm=self._needs_llm(body)))
+        self._units.append(_Unit(raw=body))
 
     def _scratch_previous_locked(self) -> None:
         while self._units and self._units[-1].is_break:
@@ -166,9 +166,9 @@ class CleanupPipeline:
                     unit = self._pending_locked()
                 if self._cancelled or unit is None:
                     return
-                raw, version, needs_llm = unit.raw, unit.version, unit.needs_llm
+                raw, version = unit.raw, unit.version
                 deadline = self._deadline
-            text = self._process(raw, needs_llm, deadline)
+            text = self._process(raw, deadline)
             with self._cond:
                 if unit.version == version:
                     unit.polished = text
@@ -176,11 +176,12 @@ class CleanupPipeline:
                 self._cond.notify_all()
             self._notify()
 
-    def _process(self, raw: str, needs_llm: bool, finish_deadline: float | None) -> str:
+    def _process(self, raw: str, finish_deadline: float | None) -> str:
         if unit_is_break(raw):
             return raw
+        raw = rules.resolve_corrections(raw)
         fallback = _rules_finalize(raw)
-        if not needs_llm or self.polisher is None:
+        if self.polisher is None or not self._needs_llm(raw):
             return fallback
         deadline = time.monotonic() + self.settings.llm_timeout
         if finish_deadline is not None:
