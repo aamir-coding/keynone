@@ -1,6 +1,7 @@
 """Generate dictation-style test recordings with the local Piper TTS voice.
 
-    uv run python scripts/make_test_audio.py      (after: keynone setup --with piper-en-lessac-medium)
+    keynone setup --with piper-en-lessac-medium
+    uv run python scripts/make_test_audio.py
 
 Writes 16 kHz mono WAVs to data/test_audio/. Each scenario is a list of
 spoken phrases separated by pauses, mimicking how people dictate.
@@ -9,7 +10,6 @@ spoken phrases separated by pauses, mimicking how people dictate.
 from __future__ import annotations
 
 import wave
-from pathlib import Path
 
 import numpy as np
 import sherpa_onnx

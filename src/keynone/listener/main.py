@@ -53,8 +53,9 @@ def missing_assets(config: Config, paths: Paths) -> list[str]:
 
 
 class ListenerApp:
-    def __init__(self, paths: Paths) -> None:
+    def __init__(self, paths: Paths, *, dry_run: bool = False) -> None:
         self.paths = paths
+        self.dry_run = dry_run  # show + transcribe, but never type into apps
         self.config = load_config(paths)
         self._config_mtime = config_mtime(paths)
         self.machine = self._build_machine(self.config)
@@ -72,7 +73,7 @@ class ListenerApp:
         icons = paths.cache / "icons"
         self._icon_idle = write_icon(icons / "idle.ico", _IDLE_COLOR)
         self._icon_rec = write_icon(icons / "recording.ico", _REC_COLOR)
-        self.tray = TrayIcon(self._tooltip(), self._icon_idle, self._menu)
+        self.tray = TrayIcon(self._tooltip(), self._icon_idle, self._menu, on_close=self.quit)
 
     # ----------------------------------------------------------------- setup
 
@@ -129,6 +130,7 @@ class ListenerApp:
         try:
             run_message_loop()
         finally:
+            log.info("listener shutting down")
             self._running = False
             hook.uninstall()
             self._stop_capture()
@@ -136,6 +138,7 @@ class ListenerApp:
             self.engine.quit()
             self.job.close()
             api.CloseHandle(mutex)
+            log.info("listener stopped")
         return 0
 
     def quit(self) -> None:
@@ -207,7 +210,8 @@ class ListenerApp:
         self.engine.ensure_started()
         self._sid += 1
         self._active_sid = self._sid
-        self.engine.send_json(Msg.START, {"sid": self._sid, "mode": "ptt", "target_hwnd": target})
+        self.engine.send_json(Msg.START, {"sid": self._sid, "mode": "ptt", "target_hwnd": target,
+                                          "insert": not self.dry_run})
         engine = self.engine
         self._capture = AudioCapture(lambda pcm: engine.send(Msg.AUDIO, pcm),
                                      device=self.config.audio.device)
@@ -298,8 +302,8 @@ class ListenerApp:
             (f"Double-tap {chord} for hands-free, Esc cancels", None),
             ("-", None),
             ("Copy last dictation", self._copy_last),
-            ("Open settings", lambda: os.startfile(self.paths.config_file)),  # noqa: S606
-            ("Open data folder", lambda: os.startfile(self.paths.data)),  # noqa: S606
+            ("Open settings", lambda: os.startfile(self.paths.config_file)),
+            ("Open data folder", lambda: os.startfile(self.paths.data)),
             ("-", None),
             ("Resume hotkey" if paused else "Pause hotkey", self._toggle_pause),
             ("Quit Keynone", self.quit),
@@ -323,9 +327,21 @@ class ListenerApp:
         self.tray.balloon("Keynone", "Last dictation copied - press Ctrl+V to paste.")
 
 
-def run_listener(*, verbose: bool = False) -> int:
+def stop_running_listener(timeout: float = 5.0) -> bool:
+    """Ask a running listener (found by its tray window) to exit cleanly."""
+    hwnd = api.FindWindowW(TrayIcon.CLASS_NAME, None)
+    if not hwnd:
+        return False
+    api.PostMessageW(hwnd, api.WM_CLOSE, 0, 0)
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline and api.FindWindowW(TrayIcon.CLASS_NAME, None):
+        time.sleep(0.05)
+    return True
+
+
+def run_listener(*, verbose: bool = False, dry_run: bool = False) -> int:
     paths = get_paths()
     paths.ensure()
     setup_logging("listener", verbose=verbose, paths=paths)
     api.enable_dpi_awareness()
-    return ListenerApp(paths).run()
+    return ListenerApp(paths, dry_run=dry_run).run()

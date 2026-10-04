@@ -159,14 +159,18 @@ MenuItem = tuple[str, Callable[[], None] | None]  # ("-", None) is a separator
 class TrayIcon(Window):
     """Notification-area icon with a context menu (call from a message-loop thread)."""
 
-    def __init__(self, tooltip: str, icon_path: Path, menu: Callable[[], list[MenuItem]]) -> None:
+    CLASS_NAME = "KeynoneTray"
+
+    def __init__(self, tooltip: str, icon_path: Path, menu: Callable[[], list[MenuItem]],
+                 on_close: Callable[[], None] | None = None) -> None:
         self._tooltip = tooltip
         self._icon = load_icon(icon_path)
         self._menu = menu
+        self._on_close = on_close
         self._taskbar_created = api.RegisterWindowMessageW("TaskbarCreated")
 
     def show(self) -> None:
-        self.create("KeynoneTray", ex_style=0, style=0, rect=(0, 0, 0, 0))
+        self.create(self.CLASS_NAME, ex_style=0, style=0, rect=(0, 0, 0, 0))
         self._notify(NIM_ADD)
 
     def _data(self, flags: int) -> api.NOTIFYICONDATAW:
@@ -232,5 +236,9 @@ class TrayIcon(Window):
             return 0
         if msg == self._taskbar_created:  # Explorer restarted: re-add the icon
             self._notify(NIM_ADD)
+            return 0
+        if msg == api.WM_CLOSE:  # `keynone stop` or system shutdown
+            if self._on_close:
+                self._on_close()
             return 0
         return None

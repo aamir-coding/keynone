@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import argparse
+import glob
 import json
 import sys
 import time
@@ -57,13 +58,37 @@ def _cmd_listen(args: argparse.Namespace) -> int:
     if sys.stdout is not None and sys.stdout.isatty():
         print("Keynone is running in the tray. Hold Ctrl+Win (default) to dictate; "
               "right-click the tray icon to quit.")
-    return run_listener(verbose=args.verbose)
+        if args.dry_run:
+            print("Dry run: dictations are shown and saved to history but not typed.")
+    return run_listener(verbose=args.verbose, dry_run=args.dry_run)
 
 
 def _cmd_engine(args: argparse.Namespace) -> int:
     from keynone.engine.main import run_engine
 
-    return run_engine(verbose=args.verbose)
+    return run_engine(verbose=args.verbose, overlay_enabled=False if args.no_overlay else None)
+
+
+def _cmd_autostart(args: argparse.Namespace) -> int:
+    from keynone import autostart
+
+    if args.action == "enable":
+        print(f"Keynone will start at sign-in: {autostart.enable()}")
+    elif args.action == "disable":
+        print("Autostart removed." if autostart.disable() else "Autostart was not enabled.")
+    else:
+        print("enabled" if autostart.is_enabled() else "disabled")
+    return 0
+
+
+def _cmd_stop(args: argparse.Namespace) -> int:
+    from keynone.listener.main import stop_running_listener
+
+    if stop_running_listener():
+        print("Keynone listener stopped.")
+        return 0
+    print("Keynone listener is not running.")
+    return 1
 
 
 def _cmd_transcribe(args: argparse.Namespace) -> int:
@@ -89,9 +114,12 @@ def _cmd_transcribe(args: argparse.Namespace) -> int:
     overlay = Overlay(enabled=args.overlay)
     overlay.start()
     status = 0
+    # Windows shells don't expand wildcards: do it here ("data/test_audio/*.wav").
+    files = [match for pattern in args.wav
+             for match in (sorted(glob.glob(pattern)) if glob.has_magic(pattern) else [pattern])]
     # The first file includes the cold start (model loading); later files show
     # the warm engine, which is what consecutive dictations experience.
-    for number, wav in enumerate(args.wav, start=1):
+    for number, wav in enumerate(files, start=1):
         pcm = read_wav_mono16k(Path(wav))
         outcome: list[SessionOutcome] = []
         session = Session(SessionMeta(sid=number, insert=False), config=config, models=models,
@@ -216,10 +244,11 @@ def _cmd_bench(args: argparse.Namespace) -> int:
 
     config = load_config(paths)
     model = args.model or config.asr.model
-    wav = Path(args.wav) if args.wav else (
-        paths.models / "nemotron-en-560ms-int8" / "test_wavs" / "1.wav")
+    wav = Path(args.wav) if args.wav else paths.data / "test_audio" / "long.wav"
     if not wav.exists():
-        wav = next((paths.models).rglob("test_wavs/*.wav"))
+        print(f"{wav} not found: pass --wav FILE (16 kHz mono WAV) or run "
+              "scripts/make_test_audio.py")
+        return 1
     pcm = read_wav_mono16k(wav)
     recognizer = Recognizer(model_files(model, paths), threads=args.threads,
                             endpoint_silence=config.asr.endpoint_silence_seconds)
@@ -254,8 +283,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--remove", action="append", metavar="ASSET", help="delete an asset")
     p.set_defaults(func=_cmd_setup)
 
-    sub.add_parser("listen", help="run the hotkey listener").set_defaults(func=_cmd_listen)
-    sub.add_parser("engine", help=argparse.SUPPRESS).set_defaults(func=_cmd_engine)
+    p = sub.add_parser("listen", help="run the hotkey listener")
+    p.add_argument("--dry-run", action="store_true",
+                   help="show and transcribe dictations but never type into apps")
+    p.set_defaults(func=_cmd_listen)
+    sub.add_parser("stop", help="stop a running listener").set_defaults(func=_cmd_stop)
+    p = sub.add_parser("autostart", help="start Keynone at Windows sign-in (Startup shortcut)")
+    p.add_argument("action", choices=["enable", "disable", "status"])
+    p.set_defaults(func=_cmd_autostart)
+    p = sub.add_parser("engine", help=argparse.SUPPRESS)
+    p.add_argument("--no-overlay", action="store_true", help=argparse.SUPPRESS)
+    p.set_defaults(func=_cmd_engine)
 
     p = sub.add_parser("transcribe", help="dictate WAV files through the pipeline (no typing)")
     p.add_argument("wav", nargs="+", help="16 kHz mono 16-bit WAV file(s)")

@@ -28,7 +28,7 @@ _SYNTHESIZED = frozenset({CF_TEXT, CF_OEMTEXT})  # derived from CF_UNICODETEXT
 _MAX_SNAPSHOT_BYTES = 64 * 1024 * 1024
 
 
-class ClipboardBusy(RuntimeError):
+class ClipboardBusyError(RuntimeError):
     pass
 
 
@@ -50,7 +50,7 @@ class _Opened:
             if api.OpenClipboard(None):
                 return self
             time.sleep(0.01)
-        raise ClipboardBusy("clipboard is in use by another application")
+        raise ClipboardBusyError("clipboard is in use by another application")
 
     def __exit__(self, *exc: object) -> None:
         api.CloseClipboard()

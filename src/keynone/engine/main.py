@@ -29,7 +29,7 @@ from keynone.win32.process import KillOnCloseJob
 log = logging.getLogger(__name__)
 
 
-def run_engine(*, verbose: bool = False) -> int:
+def run_engine(*, verbose: bool = False, overlay_enabled: bool | None = None) -> int:
     paths = get_paths()
     paths.ensure()
     setup_logging("engine", verbose=verbose, paths=paths)
@@ -44,8 +44,9 @@ def run_engine(*, verbose: bool = False) -> int:
     job = KillOnCloseJob()
     models = EngineModels(config, paths, job)
     models.start()
+    show_overlay = config.overlay.enabled if overlay_enabled is None else overlay_enabled
     overlay = Overlay(opacity=config.overlay.opacity, position=config.overlay.position,
-                      enabled=config.overlay.enabled)
+                      enabled=show_overlay)
     overlay.start()
     history = History(paths.history_db, enabled=config.history.enabled,
                       retention_days=config.history.retention_days)

@@ -49,8 +49,8 @@ def remove_fillers(text: str) -> str:
 
 # Doubled words that are usually intentional.
 _KEEP_DOUBLE = frozenset(
-    "that had is very really so no bye ha haha knock yeah yes go now well there tut chop "
-    "bla blah la hey hi".split()
+    """that had is very really so no bye ha haha knock yeah yes go now well there tut chop bla
+    blah la hey hi""".split()
 )
 _WORD = r"[^\W\d_](?:[\w'’]*[^\W_])?"  # a word that starts with a letter
 _REPEAT_WORD_RE = re.compile(rf"(?i)\b({_WORD})(?:-?[\s,]+\1\b)+")
@@ -520,8 +520,8 @@ _LEADING_CORRECTION_RE = re.compile(rf"(?i)^(?:actually,?\s+)?{_STRONG_CUE}{_CUE
 
 _NUMBER_TOKENS = frozenset(
     """zero oh one two three four five six seven eight nine ten eleven twelve thirteen fourteen
-    fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty
-    ninety hundred thousand million billion half quarter noon midnight""".split()
+    fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy
+    eighty ninety hundred thousand million billion half quarter noon midnight""".split()
 )
 _DAY_TOKENS = frozenset(
     "monday tuesday wednesday thursday friday saturday sunday today tomorrow tonight".split()
@@ -531,9 +531,9 @@ _MONTH_TOKENS = frozenset(
 )
 _FUNCTION_WORDS = frozenset(
     """a an the this that these those my your his her its our their i you he she we they it me
-    him us them is are was were be been am do does did have has had will would can could should
-    may might must to of in on at for by with from and or but so if as not no yes just also
-    very really there here it's i'm we're they're you're i'll we'll i've let's""".split()
+    him us them is are was were be been am do does did have has had will would can could
+    should may might must to of in on at for by with from and or but so if as not no yes
+    just also very really there here it's i'm we're they're you're i'll we'll i've let's""".split()
 )
 _JOINERS = frozenset(
     "for to at in on by with from and or please instead tomorrow today tonight".split()

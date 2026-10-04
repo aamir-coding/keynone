@@ -14,7 +14,7 @@ hold_threshold_ms = 300
 double_tap_ms = 400
 
 [lifecycle]
-# Seconds to keep the speech engine loaded (idle: 0% CPU, ~1.6 GB RAM) after a
+# Seconds to keep the speech engine loaded (idle: 0% CPU, ~2 GB RAM) after a
 # dictation so the next one starts instantly; afterwards it exits completely and
 # only the small hotkey listener remains (0% CPU, no microphone, no models).
 # 0 = strict on-demand: the engine exits right after every dictation, so every

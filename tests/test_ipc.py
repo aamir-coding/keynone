@@ -2,7 +2,15 @@ import io
 
 import pytest
 
-from keynone.ipc import EventWriter, Msg, ProtocolError, encode, encode_json, parse_event, read_frame
+from keynone.ipc import (
+    EventWriter,
+    Msg,
+    ProtocolError,
+    encode,
+    encode_json,
+    parse_event,
+    read_frame,
+)
 
 
 def test_round_trip_frames() -> None:

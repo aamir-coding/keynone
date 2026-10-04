@@ -22,13 +22,13 @@ _ASSISTANT_OPENERS = (
 _ALLOWED_NEW = frozenset(
     """a an the and or but to of in on at for by with is are was were be it its it's this that
     these those i you he she we they me him her us them my your our their not no yes am pm
-    a.m p.m dollars dollar percent o'clock first second third one two three four five six seven
-    eight nine ten hundred thousand million billion""".split()
+    a.m p.m dollars dollar percent o'clock first second third one two three four five six
+    seven eight nine ten hundred thousand million billion""".split()
 )
 _NUMBER_WORDS = frozenset(
     """zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen
-    fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty
-    ninety hundred thousand million billion half quarter point oh dot""".split()
+    fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy
+    eighty ninety hundred thousand million billion half quarter point oh dot""".split()
 )
 
 

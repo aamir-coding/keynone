@@ -39,7 +39,7 @@ class Inserter:
     def _to_clipboard(self, text: str, why: str) -> InsertResult:
         try:
             clipboard.set_text(text, private=False)  # the user will paste it themselves
-        except clipboard.ClipboardBusy:
+        except clipboard.ClipboardBusyError:
             return InsertResult("none", False, f"{why} - clipboard busy, see history")
         return InsertResult("clipboard", False, f"{why} - copied, press Ctrl+V")
 
@@ -62,7 +62,7 @@ class Inserter:
                 keys.type_text(text, newline=newline)
                 return InsertResult("type", True)
             return self._paste(text, profile)
-        except (OSError, clipboard.ClipboardBusy) as exc:
+        except (OSError, clipboard.ClipboardBusyError) as exc:
             log.warning("insertion failed: %s", exc)
             return self._to_clipboard(text, "Insertion failed")
 
@@ -71,13 +71,13 @@ class Inserter:
         if self.config.restore_clipboard:
             try:
                 snapshot = clipboard.snapshot()
-            except clipboard.ClipboardBusy:
+            except clipboard.ClipboardBusyError:
                 log.info("clipboard busy; previous content will not be restored")
         sequence = clipboard.set_text(text)
         keys.send_chord(keys.Chord.parse(profile.paste_keys or self.config.paste_keys))
         if snapshot is not None and snapshot.complete:
             # The target app reads the clipboard asynchronously; give it time.
             time.sleep(self.config.restore_delay_ms / 1000)
-            with contextlib.suppress(clipboard.ClipboardBusy):
+            with contextlib.suppress(clipboard.ClipboardBusyError):
                 clipboard.restore(snapshot, sequence)
         return InsertResult("paste", True)

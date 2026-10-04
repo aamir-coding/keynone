@@ -34,7 +34,7 @@ class LazyPolisher:
         self._models = models
 
     def polish(self, transcript: str, *, deadline: float | None = None,
-               on_text: Callable[[str], None] | None = None):  # noqa: ANN201
+               on_text: Callable[[str], None] | None = None):
         remaining = 30.0 if deadline is None else max(0.0, deadline - time.monotonic())
         if not self._models.llm_ready.wait(remaining) or self._models.polisher is None:
             return _Unavailable()
