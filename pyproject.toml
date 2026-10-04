@@ -1,0 +1,65 @@
+[project]
+name = "keynone"
+version = "0.1.0"
+description = "Local, private, Typeless-style AI voice dictation for Windows: streaming ASR with live preview plus local LLM cleanup, inserted into any app."
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "numpy>=2.0",
+    "sherpa-onnx==1.13.8",
+    # Native runtime (bundles the matching onnxruntime.dll). Declared explicitly:
+    # uv does not pick it up from sherpa-onnx's dynamic metadata, and without it
+    # Windows' own, older System32\onnxruntime.dll gets loaded instead.
+    "sherpa-onnx-core==1.13.8",
+]
+
+[project.scripts]
+keynone = "keynone.__main__:main"
+
+[project.gui-scripts]
+# Same entry point, but built against pythonw.exe: no console window.
+keynonew = "keynone.__main__:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.8",
+    "mypy>=1.13",
+]
+
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "N"]
+ignore = [
+    "N801", # ctypes structures mirror Win32 names (e.g. KBDLLHOOKSTRUCT)
+    "N802", # Win32-style function names in ctypes wrappers
+    "N803",
+    "N806",
+    "N815", # ctypes _fields_ use Win32 mixedCase names
+    "N816",
+    "RUF012", # ctypes _fields_ are class-level lists by design
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "models: needs downloaded models (run `keynone setup` first)",
+    "desktop: interacts with the live desktop (clipboard, focus); opt-in via KEYNONE_DESKTOP_TESTS=1",
+]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src/keynone"]
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+check_untyped_defs = true

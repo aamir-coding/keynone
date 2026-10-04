@@ -1,0 +1,29 @@
+# --- Local toolchain / caches (everything stays inside this folder) ---
+.python/
+.cache/
+.venv/
+.tmp/
+.scratch/
+
+# --- Large binary assets fetched by `keynone setup` ---
+models/
+bin/
+
+# --- Runtime data (config, history, logs, prompt caches) ---
+data/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

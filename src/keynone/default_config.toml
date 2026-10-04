@@ -1,0 +1,96 @@
+# Keynone settings.
+# This file is copied to data/config.toml on first run - edit that copy.
+# Changes are picked up automatically at the start of the next dictation.
+
+[hotkeys]
+# Hold to dictate, release to insert the polished text.
+# Double-tap to start hands-free mode; tap once more to finish.
+# Examples: "ctrl+win", "rctrl", "capslock", "ctrl+alt+space", "f9", "ctrl+shift+d"
+dictate = "ctrl+win"
+# Discards the current dictation.
+cancel = "esc"
+# A press shorter than this counts as a "tap" (used for double-tap hands-free).
+hold_threshold_ms = 300
+double_tap_ms = 400
+
+[lifecycle]
+# Seconds to keep the speech engine loaded after a dictation so the next one
+# starts instantly. 0 = strict on-demand: the engine and its models exit as
+# soon as the text is inserted (only the ~15 MB hotkey listener stays, idle).
+keep_warm_seconds = 0
+
+[audio]
+# Part of the microphone name to use; empty = Windows default input device.
+device = ""
+# Short start/stop sounds.
+cues = true
+# Hard limit for one dictation.
+max_session_seconds = 600
+# Hands-free mode stops by itself after this much silence (0 = never).
+handsfree_silence_stop_seconds = 0
+
+[asr]
+model = "nemotron-en-160ms-int8"
+threads = 2
+# Pause length that closes a sentence for early background polishing.
+endpoint_silence_seconds = 0.8
+
+[cleanup]
+# "auto"   - local LLM only when the text needs it (self-corrections, lists, fillers like "you know")
+# "always" - every dictation is polished by the LLM (slightly slower)
+# "off"    - fast rule-based cleanup only (fillers, stutters, voice commands)
+llm_mode = "auto"
+remove_fillers = true
+# Spoken "new line", "new paragraph", "scratch that".
+voice_commands = true
+# If the LLM is slower than this, the rule-based text is used instead.
+llm_timeout_seconds = 4.0
+
+[llm]
+model = "lfm2.5-1.2b-instruct-q4km"
+threads = 4
+context = 2048
+
+[insert]
+# "paste": via clipboard (fast, handles any text; your clipboard is restored afterwards)
+# "type" : simulated keystrokes (for apps that block paste)
+method = "paste"
+paste_keys = "ctrl+v"
+restore_clipboard = true
+restore_delay_ms = 400
+trailing_space = true
+
+[overlay]
+enabled = true
+# "bottom" or "top" of the screen that has the active window.
+position = "bottom"
+opacity = 0.94
+
+[history]
+# Local history of dictations in data/history.db (never leaves this folder).
+enabled = true
+retention_days = 30
+
+[privacy]
+# Write transcript text into log files (for debugging only).
+log_transcripts = false
+
+[dictionary]
+# Names and jargon spelled your way. Also given to the LLM as spelling hints.
+words = []
+
+[dictionary.replacements]
+# "chat gpt" = "ChatGPT"
+# "post gres" = "Postgres"
+
+# Per-app behaviour. The first profile whose `match` (process name) or
+# `title_match` (window-title substring) matches the active window wins.
+# Built-in profiles for chat apps, e-mail and code editors/terminals apply
+# after yours. Fields: style ("default" | "chat" | "email" | "code"), method,
+# paste_keys, trailing_space, llm_mode, drop_final_period.
+#
+# [[apps]]
+# name = "my-terminal"
+# match = ["mintty.exe"]
+# paste_keys = "shift+insert"
+# style = "code"
