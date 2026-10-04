@@ -15,7 +15,7 @@ or "I mean" are left for the LLM, which can tell filler from meaning.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 
 # Marker inserted for a spoken "scratch that"; resolved by the pipeline.
@@ -84,6 +84,11 @@ def _phrase_pattern(phrase: str) -> re.Pattern[str] | None:
     return re.compile(rf"(?i)(?<![\w]){body}(?![\w])")
 
 
+def _literal(value: str) -> Callable[[re.Match[str]], str]:
+    """Replacement function: inserts ``value`` verbatim (no backslash escapes)."""
+    return lambda _match: value
+
+
 def apply_dictionary(
     text: str, words: Iterable[str] = (), replacements: Mapping[str, str] | None = None
 ) -> str:
@@ -91,11 +96,11 @@ def apply_dictionary(
     for spoken, written in (replacements or {}).items():
         pattern = _phrase_pattern(spoken)
         if pattern:
-            text = pattern.sub(lambda _m, w=written: w, text)
+            text = pattern.sub(_literal(written), text)
     for word in words:
         pattern = _phrase_pattern(word)
         if pattern:
-            text = pattern.sub(lambda _m, w=word: w, text)
+            text = pattern.sub(_literal(word), text)
     return text
 
 
@@ -339,11 +344,11 @@ def format_spoken_list(text: str) -> str | None:
     bullets = list(_BULLET_RE.finditer(text))
     if len(bullets) >= 2:
         intro = text[: bullets[0].start()].strip()
-        items = [
+        bullet_items = [
             _clean_item(text[m.end() : (bullets[i + 1].start() if i + 1 < len(bullets) else None)])
             for i, m in enumerate(bullets)
         ]
-        return _assemble_list(intro, [f"- {it}" for it in items if it])
+        return _assemble_list(intro, [f"- {it}" for it in bullet_items if it])
 
     markers = list(_MARKER_RE.finditer(text))
     ranked = [m for m in markers if _marker_rank(_marker_text(m)) is not None]
@@ -411,7 +416,7 @@ def has_correction_cue(text: str) -> bool:
 
 def starts_with_correction_cue(text: str) -> bool:
     m = _CORRECTION_RE.search(text)
-    return bool(m) and m.start() <= 2
+    return m is not None and m.start() <= 2
 
 
 def has_soft_fillers(text: str) -> bool:
@@ -585,8 +590,12 @@ class RuleOptions:
     replacements: tuple[tuple[str, str], ...] = ()
 
 
-def clean_sentence(text: str, options: RuleOptions = RuleOptions()) -> str:
+_DEFAULT_OPTIONS = RuleOptions()
+
+
+def clean_sentence(text: str, options: RuleOptions | None = None) -> str:
     """Rule-based cleanup for one ASR sentence (or any short text)."""
+    options = options or _DEFAULT_OPTIONS
     if options.remove_fillers:
         text = remove_fillers(text)
         text = remove_repetitions(text)

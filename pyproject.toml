@@ -46,7 +46,12 @@ ignore = [
     "N815", # ctypes _fields_ use Win32 mixedCase names
     "N816",
     "RUF012", # ctypes _fields_ are class-level lists by design
+    "RUF001", # typographic quotes/dashes are matched on purpose when normalizing text
+    "SIM905", # "word word".split() keeps vocabularies readable
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"src/keynone/win32/api.py" = ["E741"] # short Win32 type aliases (H, U, I, D) in declarations
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

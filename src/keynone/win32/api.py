@@ -8,8 +8,10 @@ function differently.
 
 from __future__ import annotations
 
+import contextlib
 import ctypes
 from ctypes import wintypes
+from typing import Any
 
 user32 = ctypes.WinDLL("user32", use_last_error=True)
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -253,7 +255,7 @@ class WAVEINCAPSW(ctypes.Structure):
 # --------------------------------------------------------------------------- functions
 
 
-def _fn(dll: ctypes.WinDLL, name: str, restype: object, *argtypes: object) -> ctypes._CFuncPtr:
+def _fn(dll: ctypes.WinDLL, name: str, restype: object, *argtypes: object) -> Any:
     func = getattr(dll, name)
     func.restype = restype
     func.argtypes = list(argtypes)
@@ -397,7 +399,5 @@ def rgb(r: int, g: int, b: int) -> int:
 
 def enable_dpi_awareness() -> None:
     """Per-monitor DPI awareness, so overlay geometry is in real pixels."""
-    try:
+    with contextlib.suppress(OSError):
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
-    except OSError:
-        pass

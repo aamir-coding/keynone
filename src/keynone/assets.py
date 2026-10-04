@@ -78,10 +78,10 @@ REGISTRY: tuple[Asset, ...] = (
     Asset(
         id="nemotron-en-160ms-int8",
         kind="asr",
-        title="NVIDIA Nemotron Speech Streaming EN 0.6B (160 ms chunks, int8, sherpa-onnx)",
+        title="NVIDIA Nemotron Speech Streaming EN 0.6B (160 ms chunks, int8) - needs a faster "
+        "CPU than a Ryzen 5 5600H for real time",
         license="NVIDIA Open Model License",
         source="https://huggingface.co/nvidia/nemotron-speech-streaming-en-0.6b",
-        default=True,
         files=(
             _hf(
                 _NEMOTRON_160,
@@ -128,6 +128,7 @@ REGISTRY: tuple[Asset, ...] = (
         title="NVIDIA Nemotron Speech Streaming EN 0.6B (560 ms chunks, int8, sherpa-onnx)",
         license="NVIDIA Open Model License",
         source="https://huggingface.co/nvidia/nemotron-speech-streaming-en-0.6b",
+        default=True,
         files=(
             _hf(
                 _NEMOTRON_560,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import ctypes
 from ctypes import wintypes
 from dataclasses import dataclass
@@ -79,9 +80,7 @@ def work_area(hwnd: int | None) -> tuple[tuple[int, int, int, int], float]:
     info = api.MONITORINFO(cbSize=ctypes.sizeof(api.MONITORINFO))
     api.GetMonitorInfoW(monitor, ctypes.byref(info))
     dpi_x, dpi_y = wintypes.UINT(96), wintypes.UINT(96)
-    try:
+    with contextlib.suppress(OSError):
         api.GetDpiForMonitor(monitor, 0, ctypes.byref(dpi_x), ctypes.byref(dpi_y))
-    except OSError:
-        pass
     rect = info.rcWork
     return (rect.left, rect.top, rect.right, rect.bottom), dpi_x.value / 96.0

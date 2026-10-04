@@ -14,7 +14,6 @@ import tomllib
 import types
 import typing
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Literal, get_args, get_origin
 
 from keynone.paths import Paths, get_paths
@@ -40,7 +39,7 @@ class HotkeyConfig:
 
 @dataclass
 class LifecycleConfig:
-    keep_warm_seconds: int = 0
+    keep_warm_seconds: int = 300
 
 
 @dataclass
@@ -53,8 +52,8 @@ class AudioConfig:
 
 @dataclass
 class AsrConfig:
-    model: str = "nemotron-en-160ms-int8"
-    threads: int = 2
+    model: str = "nemotron-en-560ms-int8"
+    threads: int = 4
     endpoint_silence_seconds: float = 0.8
 
 
@@ -288,7 +287,8 @@ def load_config(paths: Paths | None = None) -> Config:
     paths.ensure()
     if not paths.config_file.exists():
         shutil.copyfile(paths.default_config, paths.config_file)
-    return parse_config(paths.config_file.read_text(encoding="utf-8"))
+    # utf-8-sig: editors such as older Notepad save UTF-8 with a BOM, which TOML rejects.
+    return parse_config(paths.config_file.read_text(encoding="utf-8-sig"))
 
 
 def config_mtime(paths: Paths | None = None) -> float:

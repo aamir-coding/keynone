@@ -44,7 +44,7 @@ class Polisher(Protocol):
 @dataclass(frozen=True)
 class CleanupSettings:
     llm_mode: LlmMode = "auto"
-    rules: rules.RuleOptions = rules.RuleOptions()
+    rules: rules.RuleOptions = field(default_factory=rules.RuleOptions)
     llm_timeout: float = 4.0
     max_unit_words: int = 60
 

@@ -14,10 +14,13 @@ hold_threshold_ms = 300
 double_tap_ms = 400
 
 [lifecycle]
-# Seconds to keep the speech engine loaded after a dictation so the next one
-# starts instantly. 0 = strict on-demand: the engine and its models exit as
-# soon as the text is inserted (only the ~15 MB hotkey listener stays, idle).
-keep_warm_seconds = 0
+# Seconds to keep the speech engine loaded (idle: 0% CPU, ~1.6 GB RAM) after a
+# dictation so the next one starts instantly; afterwards it exits completely and
+# only the small hotkey listener remains (0% CPU, no microphone, no models).
+# 0 = strict on-demand: the engine exits right after every dictation, so every
+# dictation pays the ~5 s model load (audio is buffered - nothing is lost, but
+# the live text appears late).
+keep_warm_seconds = 300
 
 [audio]
 # Part of the microphone name to use; empty = Windows default input device.
@@ -30,8 +33,8 @@ max_session_seconds = 600
 handsfree_silence_stop_seconds = 0
 
 [asr]
-model = "nemotron-en-160ms-int8"
-threads = 2
+model = "nemotron-en-560ms-int8"
+threads = 4
 # Pause length that closes a sentence for early background polishing.
 endpoint_silence_seconds = 0.8
 

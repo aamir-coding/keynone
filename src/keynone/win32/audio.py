@@ -11,6 +11,7 @@ import ctypes
 import logging
 import threading
 from collections.abc import Callable
+from typing import Any
 
 from keynone.win32 import api
 
@@ -126,7 +127,7 @@ class AudioCapture:
             api.waveInClose(handle)
             api.CloseHandle(event)
 
-    def _drain(self, handle: int, headers: ctypes.Array, index: int, *, requeue: bool) -> int:
+    def _drain(self, handle: Any, headers: Any, index: int, *, requeue: bool) -> int:
         hdr_size = ctypes.sizeof(api.WAVEHDR)
         for _ in range(self.BUFFERS):
             header = headers[index]
