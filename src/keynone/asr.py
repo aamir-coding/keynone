@@ -89,6 +89,9 @@ class Stream:
         self._text = ""
         self._in_endpoint = False
         self.samples = 0
+        # Audio time (s) at which the newest recognized token was spoken; with
+        # live audio, "now - stream start - last_token_time" is the display lag.
+        self.last_token_time = 0.0
 
     @property
     def text(self) -> str:
@@ -118,7 +121,11 @@ class Stream:
         with self._lock:
             while self._rec.is_ready(self._stream):
                 self._rec.decode_stream(self._stream)
-            text = str(self._rec.get_result(self._stream)).strip()
+            result = self._rec.get_result_all(self._stream)
+        text = str(result.text).strip()
+        timestamps = list(result.timestamps)
+        if timestamps:
+            self.last_token_time = float(timestamps[-1])
         if text != self._text:
             self._text = text
             return True

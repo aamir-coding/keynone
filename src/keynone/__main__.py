@@ -116,7 +116,8 @@ def _cmd_transcribe(args: argparse.Namespace) -> int:
             "engine": "cold" if number == 1 else "warm",
             "status": result.status,
             "audio_seconds": round(result.audio_seconds, 2),
-            "first_live_text_ms": result.first_text_ms,
+            "live_lag_ms": {"p50": result.live_lag_p50_ms, "p95": result.live_lag_p95_ms,
+                            "max": result.live_lag_max_ms},
             "stop_to_text_ms": result.latency_ms,
             "llm_calls": result.llm_calls,
         }))

@@ -1,17 +1,18 @@
 """Incremental cleanup of a dictation, sentence by sentence.
 
-While the user is still speaking, every finished sentence is cleaned with the
-instant rules and - when it needs it - polished by the local LLM in a
-background thread. Sentences that continue or correct the previous one
-("... Actually, make that Friday.") are merged into one *unit* so the LLM sees
-the correction together with what it corrects. When the user stops, usually
-only the last unit is left to process, which keeps the release-to-text delay
-short even for long dictations.
+While the user is still speaking, every finished ASR sentence is grouped into
+*units* and cleaned in a background thread: fragments split by a pause are
+re-joined, a sentence that corrects the previous one ("... Actually, make
+that Friday.") joins it, and a spoken list stays together. Each unit gets the
+instant rules and - only when it needs it - the local LLM. When the user
+stops, usually only the last unit is left to process, which keeps the
+release-to-text delay short even for long dictations.
 """
 
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import time
 from collections.abc import Callable
@@ -24,6 +25,11 @@ from keynone.config import LlmMode
 log = logging.getLogger(__name__)
 
 _TERMINAL = (".", "!", "?", "…", ":", "\n")
+_LEADING_SCRATCH_RE = re.compile(
+    r"(?i)^(?:scratch|delete|strike|erase)\s+that[,.!:;]?\s+(?P<rest>\S.*)$"
+)
+_GREETING_RE = re.compile(r"(?i)^(?:hi|hello|hey|dear|good (?:morning|afternoon|evening))\b")
+_LEADING_PUNCT_RE = re.compile(r"^([.!?…,;:]+)\s*")
 
 
 class PolishResult(Protocol):
@@ -61,19 +67,19 @@ class CleanupResult:
 
 @dataclass
 class _Unit:
-    raw: str
+    raw: str  # recognizer text; cleaned as a whole when processed
     version: int = 0
     done_version: int = -1
     polished: str = ""
     is_break: bool = False
 
 
-def _rules_finalize(raw: str) -> str:
-    return rules.format_spoken_list(raw) or raw
-
-
 def _word_count(text: str) -> int:
     return len(text.split())
+
+
+def unit_is_break(text: str) -> bool:
+    return bool(text) and not text.strip("\n")
 
 
 class CleanupPipeline:
@@ -95,7 +101,17 @@ class CleanupPipeline:
         self._worker = threading.Thread(target=self._run, name="cleanup", daemon=True)
         self._worker.start()
 
-    # ----------------------------------------------------------------- input
+    # ----------------------------------------------------------------- rules
+
+    def _rules_clean(self, raw: str) -> str:
+        """Deterministic cleanup of one unit (instant)."""
+        text = rules.clean_sentence(raw, self.settings.rules)
+        text, _ = rules.resolve_scratches(text)
+        return rules.resolve_corrections(text)
+
+    @staticmethod
+    def _finalize(text: str) -> str:
+        return rules.format_spoken_list(text) or text
 
     def _needs_llm(self, text: str) -> bool:
         if self.polisher is None or self.settings.llm_mode == "off":
@@ -106,37 +122,77 @@ class CleanupPipeline:
             return correction or rules.format_spoken_list(text) is None
         return correction or rules.has_soft_fillers(text)
 
+    # ----------------------------------------------------------------- input
+
     def add_sentence(self, sentence: str) -> None:
-        """Feed one finished ASR sentence (raw, punctuated model output)."""
-        cleaned = rules.clean_sentence(sentence, self.settings.rules)
-        body, dangling = rules.resolve_scratches(cleaned)
+        """Feed one finished ASR sentence (or a fragment ended by a pause)."""
+        raw = " ".join(sentence.split())
+        if not raw:
+            return
         with self._cond:
-            for _ in range(dangling):
+            # The recognizer often emits a sentence's final punctuation only after
+            # the pause that flushed the sentence: give it back to that sentence.
+            leading = _LEADING_PUNCT_RE.match(raw)
+            if leading:
+                prev = self._units[-1] if self._units and not self._units[-1].is_break else None
+                if prev is not None and not prev.raw.rstrip().endswith((*_TERMINAL, ",")):
+                    prev.raw = prev.raw.rstrip() + leading.group(1)
+                    prev.version += 1
+                raw = raw[leading.end() :]
+                if not raw:
+                    self._cond.notify_all()
+                    return
+            commands_on = self.settings.rules.voice_commands
+            command = rules.command_for(raw) if commands_on else None
+            scratch_then = _LEADING_SCRATCH_RE.match(raw) if commands_on else None
+            if command == rules.SCRATCH:
                 self._scratch_previous_locked()
-            body = body.strip(" ")
-            if body.strip("\n"):
-                self._append_locked(body)
-            elif body:  # only line breaks
-                self._units.append(_Unit(raw=body, is_break=True))
+            elif command is not None:
+                self._close_open_sentence_locked(before_break=True)
+                self._units.append(_Unit(raw=command, is_break=True))
+            elif scratch_then:
+                self._scratch_previous_locked()
+                self._append_locked(scratch_then.group("rest"))
+            else:
+                self._append_locked(raw)
             self._cond.notify_all()
         self._notify()
 
-    def _append_locked(self, body: str) -> None:
+    def _close_open_sentence_locked(self, *, before_break: bool = False) -> _Unit | None:
+        """End the last unit's sentence if the recognizer left it unpunctuated."""
+        prev = self._units[-1] if self._units and not self._units[-1].is_break else None
+        if prev is None or prev.raw.rstrip().endswith((*_TERMINAL, ",")):
+            return prev
+        body = prev.raw.rstrip(" ,;:")
+        greeting = before_break and _word_count(body) <= 4 and _GREETING_RE.match(body)
+        prev.raw = body + ("," if greeting else ".")
+        prev.version += 1
+        return prev
+
+    def _append_locked(self, raw: str) -> None:
         prev = self._units[-1] if self._units and not self._units[-1].is_break else None
         if prev is not None:
-            joined = f"{prev.raw} {body}"
-            continues = not prev.raw.rstrip().endswith(_TERMINAL) and body[:1].islower()
-            corrects = rules.starts_with_correction_cue(body)
-            lists = rules.starts_list_item(body) and rules.has_list_cue(joined)
+            limit = self.settings.max_unit_words
+            tail = prev.raw.rstrip()
+            open_sentence = not tail.endswith(_TERMINAL)
+            mid_sentence = (raw[:1].islower() or tail.endswith(",")
+                            or rules.ends_with_non_final_word(tail))
+            if open_sentence and mid_sentence and _word_count(prev.raw) + _word_count(raw) <= limit:
+                prev.raw = f"{tail} {raw}"  # a pause in the middle of a sentence
+                prev.version += 1
+                return
+            # Otherwise the pause ended a sentence (maybe left unpunctuated by the
+            # recognizer: the period is added when units are joined).
+            joined = f"{tail.rstrip(',;:')}. {raw}" if open_sentence else f"{tail} {raw}"
+            corrects = rules.starts_with_correction_cue(raw)
+            lists = rules.starts_list_item(raw) and rules.has_list_cue(joined)
             # "We need three things. First, ..." -> the short intro heads the list.
-            opens_list = rules.starts_first_list_item(body) and _word_count(prev.raw) <= 25
-            if (continues or corrects or lists or opens_list) and _word_count(joined) <= (
-                self.settings.max_unit_words
-            ):
+            opens_list = rules.starts_first_list_item(raw) and _word_count(prev.raw) <= 25
+            if (corrects or lists or opens_list) and _word_count(joined) <= limit:
                 prev.raw = joined
                 prev.version += 1
                 return
-        self._units.append(_Unit(raw=body))
+        self._units.append(_Unit(raw=raw))
 
     def _scratch_previous_locked(self) -> None:
         while self._units and self._units[-1].is_break:
@@ -179,16 +235,16 @@ class CleanupPipeline:
     def _process(self, raw: str, finish_deadline: float | None) -> str:
         if unit_is_break(raw):
             return raw
-        raw = rules.resolve_corrections(raw)
-        fallback = _rules_finalize(raw)
-        if self.polisher is None or not self._needs_llm(raw):
+        cleaned = self._rules_clean(raw)
+        fallback = self._finalize(cleaned)
+        if self.polisher is None or not self._needs_llm(cleaned):
             return fallback
         deadline = time.monotonic() + self.settings.llm_timeout
         if finish_deadline is not None:
             deadline = min(deadline, finish_deadline)
         self._result.llm_calls += 1
         try:
-            result = self.polisher.polish(raw, deadline=deadline)
+            result = self.polisher.polish(cleaned, deadline=deadline)
         except Exception as exc:  # LLM problems must never lose the dictation
             log.warning("LLM polish failed: %s", exc)
             self._result.rejections.append(f"error: {exc}")
@@ -196,7 +252,8 @@ class CleanupPipeline:
         if result.truncated:
             self._result.rejections.append("timeout")
             return fallback
-        verdict = guard.validate(raw, result.text, has_correction=rules.has_correction_cue(raw))
+        verdict = guard.validate(cleaned, result.text,
+                                 has_correction=rules.has_correction_cue(cleaned))
         if not verdict.ok:
             log.info("LLM output rejected: %s", verdict.reason)
             self._result.rejections.append(verdict.reason)
@@ -206,7 +263,7 @@ class CleanupPipeline:
         polished = rules.apply_dictionary(
             polished, self.settings.rules.words, dict(self.settings.rules.replacements)
         )
-        return _rules_finalize(polished)
+        return self._finalize(polished)
 
     def _notify(self) -> None:
         if self._on_update:
@@ -218,9 +275,12 @@ class CleanupPipeline:
     # ----------------------------------------------------------------- output
 
     def preview(self) -> str:
-        """Best text so far, for the live overlay."""
+        """Best text so far, for the live overlay (instant rules for pending units)."""
         with self._cond:
-            parts = [u.polished if u.done_version == u.version else u.raw for u in self._units]
+            snapshot = [(u.raw, u.polished, u.done_version == u.version, u.is_break)
+                        for u in self._units]
+        parts = [polished if done else (raw if is_break else self._rules_clean(raw))
+                 for raw, polished, done, is_break in snapshot]
         return formatting.join_units(parts)
 
     def finish(self, timeout: float) -> CleanupResult:
@@ -235,14 +295,16 @@ class CleanupPipeline:
                 if remaining <= 0:
                     break
                 self._cond.wait(remaining)
-            parts = []
-            for unit in self._units:
-                if unit.done_version == unit.version:
-                    parts.append(unit.polished)
-                else:
-                    self._result.timed_out_units += 1
-                    parts.append(_rules_finalize(unit.raw))
+            snapshot = [(u.raw, u.polished, u.done_version == u.version, u.is_break)
+                        for u in self._units]
             self._result.units = sum(1 for u in self._units if not u.is_break)
+        parts = []
+        for raw, polished, done, is_break in snapshot:
+            if done or is_break:
+                parts.append(polished if done else raw)
+            else:
+                self._result.timed_out_units += 1
+                parts.append(self._finalize(self._rules_clean(raw)))
         self._result.text = formatting.join_units(parts)
         return self._result
 
@@ -250,7 +312,3 @@ class CleanupPipeline:
         with self._cond:
             self._cancelled = True
             self._cond.notify_all()
-
-
-def unit_is_break(text: str) -> bool:
-    return bool(text) and not text.strip("\n")

@@ -8,7 +8,7 @@ from keynone.paths import Paths
 
 def test_shipped_default_config_parses() -> None:
     default = Path(__file__).resolve().parents[1] / "src" / "keynone" / "default_config.toml"
-    assert not default.read_bytes().startswith(b"\xef\xbb\xbf"), "default config must not have a BOM"
+    assert not default.read_bytes().startswith(b"\xef\xbb\xbf"), "default config has a BOM"
     config = parse_config(default.read_text(encoding="utf-8"))
     assert config.asr.model == "nemotron-en-560ms-int8"
     assert config.cleanup.llm_mode == "auto"

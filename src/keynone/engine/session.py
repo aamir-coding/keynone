@@ -45,6 +45,9 @@ class SessionOutcome:
     audio_seconds: float = 0.0
     latency_ms: int = 0  # stop -> text delivered
     first_text_ms: int = 0  # first audio -> first live text
+    live_lag_p50_ms: int = 0  # word spoken -> word shown in the overlay
+    live_lag_p95_ms: int = 0
+    live_lag_max_ms: int = 0
     llm_calls: int = 0
     message: str = ""
 
@@ -83,6 +86,7 @@ class Session:
         self._stopped_at: float | None = None
         self._first_audio: float | None = None
         self._first_text_ms = 0
+        self._lags: list[float] = []
         self._peak = 0
         self._audio_bytes = 0
         self._last_voice = time.monotonic()
@@ -210,9 +214,13 @@ class Session:
                     stopped = True
                     break
             assert isinstance(item, bytes)
+            before = stream.text
             update = stream.accept_pcm16(b"".join(c for c in chunks if isinstance(c, bytes)))
             if update:
                 text, endpoint = update
+                if text != before and self._first_audio is not None:
+                    spoken_at = self._first_audio + stream.last_token_time
+                    self._lags.append(time.monotonic() - spoken_at)
                 for sentence in self._segmenter.update(text, flush=endpoint):
                     self._pipeline.add_sentence(sentence)
                 self._refresh()
@@ -235,8 +243,12 @@ class Session:
             drop_final_period=bool(profile.drop_final_period),
             trailing_space=trailing,
         )
+        lags = sorted(self._lags)
         base = dict(sid=self.meta.sid, raw_text=raw, audio_seconds=seconds, llm_calls=llm_calls,
-                    first_text_ms=self._first_text_ms)
+                    first_text_ms=self._first_text_ms,
+                    live_lag_p50_ms=int(1000 * lags[len(lags) // 2]) if lags else 0,
+                    live_lag_p95_ms=int(1000 * lags[int(0.95 * (len(lags) - 1))]) if lags else 0,
+                    live_lag_max_ms=int(1000 * lags[-1]) if lags else 0)
         if not text.strip():
             self.overlay.update(status="No speech detected", tone="idle", text="")
             self.overlay.hide(1200)

@@ -31,11 +31,41 @@ def normalize_lists(text: str) -> str:
     return "\n".join(out)
 
 
+_SENTENCE_END_RE = re.compile(r"[.!?…:;,][\"'”’)\]]*$")
+_SUBJECTS = r"(?:you|we|i|they|he|she|anyone|someone|somebody|anybody|everyone)"
+_QUESTION_START_RE = re.compile(
+    r"(?i)^(?:"
+    r"(?:what(?!\s+an?\b)|why|how|where|when|who|whom|whose|which)\b"
+    # "do"/"have" are also imperatives ("Do it now", "Have a look"): subjects only
+    rf"|(?:do|have)\s+{_SUBJECTS}\b"
+    r"|(?:can|could|would|will|shall|should|may|might|does|did|is|are|was|were|has|had"
+    r"|isn't|aren't|wasn't|don't|doesn't|didn't|won't|wouldn't|can't|couldn't|shouldn't)"
+    rf"\s+(?:{_SUBJECTS}|it|this|that|there|the|my|your|our|their)\b)"
+)
+
+
+def _last_sentence(line: str) -> str:
+    parts = re.split(r"(?<=[.!?…])\s+", line.strip())
+    return parts[-1] if parts else line
+
+
+def _close_sentence(text: str) -> str:
+    """End an unpunctuated sentence with "?" if it reads as a question, else "."."""
+    last_line = text.rstrip().rsplit("\n", 1)[-1]
+    if not last_line.strip() or is_list_line(last_line) or _SENTENCE_END_RE.search(last_line):
+        return text
+    mark = "?" if _QUESTION_START_RE.match(_last_sentence(last_line)) else "."
+    return text.rstrip() + mark
+
+
 def join_units(units: Iterable[str]) -> str:
+    """Join cleaned units; each unit is a separate sentence (or list/paragraph)."""
     out = ""
     for unit in units:
         if not unit:
             continue
+        if out and not out.endswith("\n") and not unit.startswith("\n"):
+            out = _close_sentence(out)
         if not out or out.endswith("\n") or unit.startswith("\n"):
             out += unit
         elif is_list_line(out.rsplit("\n", 1)[-1]) or is_list_line(unit.split("\n", 1)[0]):
@@ -54,6 +84,8 @@ def finalize(
     if not text:
         return ""
     text = normalize_lists(text)
+    if style != "code":
+        text = _close_sentence(text)
     if (
         style == "chat"
         and drop_final_period

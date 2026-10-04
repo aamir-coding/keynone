@@ -202,15 +202,47 @@ _EDGE_CMD_RE = re.compile(
 )
 
 
-def _command_for(sentence: str) -> str | None:
+def _edit_distance(a: str, b: str) -> int:
+    previous = list(range(len(b) + 1))
+    for i, ca in enumerate(a, start=1):
+        current = [i]
+        for j, cb in enumerate(b, start=1):
+            current.append(min(previous[j] + 1, current[j - 1] + 1,
+                               previous[j - 1] + (ca != cb)))
+        previous = current
+    return previous[-1]
+
+
+def _words_match(spoken: str, phrase: str) -> bool:
+    """Same words, allowing one recognition slip in words of 4+ letters."""
+    a, b = spoken.split(), phrase.split()
+    if len(a) != len(b):
+        return False
+    return all(x == y or (len(y) >= 4 and _edit_distance(x, y) <= 1)
+               for x, y in zip(a, b, strict=True))
+
+
+_COMMANDS: tuple[tuple[frozenset[str] | set[str], str], ...] = (
+    (_NEWLINE_CMDS, "\n"), (_PARAGRAPH_CMDS, "\n\n"), (_SCRATCH_CMDS, SCRATCH),
+)
+
+
+def command_for(sentence: str) -> str | None:
+    """The command a standalone spoken sentence stands for, if any.
+
+    Tolerates one small recognition slip per word ("cratch that", "new lines")
+    while ordinary sentences ("catch that") do not match.
+    """
     key = re.sub(r"[^\w\s]", "", sentence).strip().lower()
     key = re.sub(r"\s+", " ", key)
-    if key in _NEWLINE_CMDS:
-        return "\n"
-    if key in _PARAGRAPH_CMDS:
-        return "\n\n"
-    if key in _SCRATCH_CMDS:
-        return SCRATCH
+    if not key or len(key.split()) > 5:
+        return None
+    for phrases, command in _COMMANDS:
+        if key in phrases:
+            return command
+    for phrases, command in _COMMANDS:
+        if any(_words_match(key, phrase) for phrase in phrases):
+            return command
     return None
 
 
@@ -225,7 +257,7 @@ def apply_voice_commands(text: str) -> str:
         if sentence.startswith("\n"):
             out.append(sentence)
             continue
-        command = _command_for(sentence)
+        command = command_for(sentence)
         if command is not None:
             out.append(command)
             continue
@@ -298,9 +330,18 @@ _MARKER_RE = re.compile(
 )
 
 
+_RANKED_WORDS = (
+    r"(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)(?:ly)?"
+    r"|(?:number|step|item)\s+(?:one|two|three|four|five|six|seven|eight|nine|ten|\d+)"
+)
+# Ordinals without punctuation ("... the flights second reserve ..."): they only
+# count once a list has clearly started, and only in sequence.
+_BARE_ORDINAL_RE = re.compile(rf"(?i)(?<![\w-])(?P<marker>{_RANKED_WORDS})\b[,:]?\s+")
+_BULLET_RE = re.compile(r"(?i)(?:^|(?<=[\s.,;:]))bullet(?:\s+point)?[,:.]?\s+")
+
+
 def _marker_text(m: re.Match[str]) -> str:
     return m.group("marker") or m.group("marker2")
-_BULLET_RE = re.compile(r"(?i)(?:^|(?<=[\s.,;:]))bullet(?:\s+point)?[,:.]?\s+")
 
 
 def _marker_rank(marker: str) -> int | None:
@@ -330,6 +371,7 @@ def _clean_item(item: str) -> str:
     item = item.strip().strip(",;:").strip()
     item = re.sub(r"^(?:and|then|also)\s+", "", item, flags=re.I)
     item = re.sub(r"[.,;:]+$", "", item).strip()
+    item = re.sub(r"(?:,?\s+(?:and|then|also))+$", "", item, flags=re.I).strip()
     if item and item[0].islower() and not any(c.isupper() for c in item.split()[0][1:]):
         item = item[0].upper() + item[1:]
     return item
@@ -350,18 +392,31 @@ def format_spoken_list(text: str) -> str | None:
         ]
         return _assemble_list(intro, [f"- {it}" for it in bullet_items if it])
 
-    markers = list(_MARKER_RE.finditer(text))
-    ranked = [m for m in markers if _marker_rank(_marker_text(m)) is not None]
-    if len(ranked) < 2 or _marker_rank(_marker_text(ranked[0])) != 1:
+    delimited = {m.start(): m for m in _MARKER_RE.finditer(text)}
+    candidates = dict(delimited)
+    for m in _BARE_ORDINAL_RE.finditer(text):
+        candidates.setdefault(m.start(), m)
+    items_markers: list[re.Match[str]] = []
+    expected = 1
+    for position in sorted(candidates):
+        m = candidates[position]
+        rank = _marker_rank(_marker_text(m))
+        if not items_markers:
+            # The list must open with a clearly delimited "first" / "number one".
+            if rank == 1 and position in delimited:
+                items_markers.append(m)
+                expected = 2
+        elif rank is not None:
+            if rank == expected:  # out-of-sequence ordinals ("the second time") are prose
+                items_markers.append(m)
+                expected += 1
+        elif position in delimited and _continuation_ok(text, m):
+            items_markers.append(m)  # next / then / finally
+            expected += 1
+    ranked_count = sum(1 for m in items_markers if _marker_rank(_marker_text(m)) is not None)
+    if ranked_count < 2:
         return None
-    start = ranked[0].start()
-    items_markers = [
-        m
-        for m in markers
-        if m.start() >= start
-        and (_marker_rank(_marker_text(m)) is not None or _continuation_ok(text, m))
-    ]
-    # Continuation markers (next/then/finally) only count once a list has started.
+    start = items_markers[0].start()
     intro = text[:start].strip()
     items: list[str] = []
     for i, m in enumerate(items_markers):
@@ -452,7 +507,15 @@ _STRONG_CUE = (
     r"correction|scratch\s+that|make\s+(?:that|it))"
 )
 _CUE_TAIL = r"(?:\s*[,:]?\s+(?:actually,?\s+)?(?:i\s+mean(?:t)?,?\s+)?(?:make\s+(?:that|it)\s+)?)"
-_INLINE_CORRECTION_RE = re.compile(rf"(?i),\s*{_STRONG_CUE}{_CUE_TAIL}")
+# Multi-word cues are unambiguous enough to work without commas, which the
+# recognizer often omits ("at three PM no wait four PM").
+_BARE_CUE = (
+    r"(?:no,?\s+wait|wait,?\s+no|i\s+mean(?:t)?|or\s+rather|scratch\s+that|"
+    r"actually,?\s+make\s+(?:that|it))"
+)
+_INLINE_CORRECTION_RE = re.compile(
+    rf"(?i)(?:,\s*(?:actually,?\s+)?{_STRONG_CUE}|\s+{_BARE_CUE}){_CUE_TAIL}"
+)
 _LEADING_CORRECTION_RE = re.compile(rf"(?i)^(?:actually,?\s+)?{_STRONG_CUE}{_CUE_TAIL}")
 
 _NUMBER_TOKENS = frozenset(
@@ -579,6 +642,60 @@ def resolve_corrections(text: str) -> str:
     return _capitalize(result) if result != text else text
 
 
+# --------------------------------------------------------------------------- times
+
+_HOURS = {w: i for i, w in enumerate(
+    "one two three four five six seven eight nine ten eleven twelve".split(), start=1)}
+_MINUTES = {
+    "oh five": 5, "o five": 5, "ten": 10, "fifteen": 15, "twenty": 20, "twenty five": 25,
+    "thirty": 30, "thirty five": 35, "forty": 40, "forty five": 45, "fifty": 50, "fifty five": 55,
+}
+_HOUR_ALT = "|".join(sorted(_HOURS, key=len, reverse=True))
+_MINUTE_ALT = "|".join(
+    k.replace(" ", r"[\s-]+") for k in sorted(_MINUTES, key=len, reverse=True)
+)
+_TIME_RE = re.compile(
+    rf"(?i)\b(?P<h>{_HOUR_ALT}|1[0-2]|[1-9])(?:[\s-]+(?P<m>{_MINUTE_ALT}))?\s*"
+    r"(?P<suffix>a\.\s?m\.|p\.\s?m\.|am\b|pm\b|o'?clock\b)"
+)
+
+
+def normalize_times(text: str) -> str:
+    """"four thirty PM" -> "4:30 PM", "ten a.m." -> "10 a.m.", "nine o'clock" -> "9 o'clock"."""
+
+    def repl(m: re.Match[str]) -> str:
+        raw_hour = m.group("h").lower()
+        hour = _HOURS.get(raw_hour) or int(raw_hour)
+        minute = None
+        if m.group("m"):
+            minute = _MINUTES[re.sub(r"[\s-]+", " ", m.group("m").lower())]
+        clock = f"{hour}:{minute:02d}" if minute is not None else f"{hour}"
+        suffix = m.group("suffix").lower().replace(" ", "")
+        if "clock" in suffix:
+            return clock if minute is not None else f"{hour} o'clock"
+        if "." in suffix:
+            return f"{clock} {'a.m.' if suffix.startswith('a') else 'p.m.'}"
+        return f"{clock} {'AM' if suffix.startswith('a') else 'PM'}"
+
+    return _TIME_RE.sub(repl, text)
+
+
+# Words a finished sentence practically never ends with: a pause after them is
+# a pause mid-sentence, whatever the case of the next word.
+_NON_FINAL_WORDS = frozenset(
+    """a an the to of in on at for by with from into onto about over under after before
+    until while and or but so because that which who whose if as than then my your his her
+    its our their this these those is are was were be been being will would can could should
+    may might must do does did have has had i we you they he she just very really also
+    like""".split()
+)
+
+
+def ends_with_non_final_word(text: str) -> bool:
+    words = text.split()
+    return bool(words) and _norm(words[-1]) in _NON_FINAL_WORDS
+
+
 # --------------------------------------------------------------------------- facade
 
 
@@ -600,6 +717,7 @@ def clean_sentence(text: str, options: RuleOptions | None = None) -> str:
         text = remove_fillers(text)
         text = remove_repetitions(text)
     text = apply_dictionary(text, options.words, dict(options.replacements))
+    text = normalize_times(text)
     text = tidy(text)
     if options.voice_commands:
         text = apply_voice_commands(text)
