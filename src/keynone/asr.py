@@ -8,6 +8,7 @@ engine finalize and polish sentences while the user is still speaking.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -67,10 +68,12 @@ class Recognizer:
             rule3_min_utterance_length=3600.0,  # never force-split long dictations
         )
         self.load_seconds = time.perf_counter() - started
+        # Serializes decoding when one dictation is finishing while the next begins.
+        self.lock = threading.Lock()
         log.info("ASR model loaded in %.2fs (%s)", self.load_seconds, files.encoder.parent.name)
 
     def stream(self) -> Stream:
-        return Stream(self._rec)
+        return Stream(self._rec, self.lock)
 
 
 class Stream:
@@ -79,8 +82,9 @@ class Stream:
     # Silence appended at the end so the last chunk (incl. look-ahead) is decoded.
     TAIL_PADDING_SECONDS = 0.6
 
-    def __init__(self, recognizer: Any) -> None:
+    def __init__(self, recognizer: Any, lock: threading.Lock | None = None) -> None:
         self._rec = recognizer
+        self._lock = lock or threading.Lock()
         self._stream = recognizer.create_stream()
         self._text = ""
         self._in_endpoint = False
@@ -111,9 +115,10 @@ class Stream:
         return None
 
     def _decode(self) -> bool:
-        while self._rec.is_ready(self._stream):
-            self._rec.decode_stream(self._stream)
-        text = str(self._rec.get_result(self._stream)).strip()
+        with self._lock:
+            while self._rec.is_ready(self._stream):
+                self._rec.decode_stream(self._stream)
+            text = str(self._rec.get_result(self._stream)).strip()
         if text != self._text:
             self._text = text
             return True

@@ -108,6 +108,49 @@ class KillOnCloseJob:
             self._handle = None
 
 
+_advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+_advapi32.OpenProcessToken.argtypes = [wintypes.HANDLE, wintypes.DWORD,
+                                       ctypes.POINTER(wintypes.HANDLE)]
+_advapi32.OpenProcessToken.restype = wintypes.BOOL
+_advapi32.GetTokenInformation.argtypes = [wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID,
+                                          wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
+_advapi32.GetTokenInformation.restype = wintypes.BOOL
+_kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+TOKEN_QUERY = 0x0008
+TokenElevation = 20
+
+
+def _token_elevated(process: int) -> bool | None:
+    token = wintypes.HANDLE()
+    if not _advapi32.OpenProcessToken(process, TOKEN_QUERY, ctypes.byref(token)):
+        return None
+    try:
+        elevated = wintypes.DWORD()
+        size = wintypes.DWORD()
+        ok = _advapi32.GetTokenInformation(token, TokenElevation, ctypes.byref(elevated),
+                                           ctypes.sizeof(elevated), ctypes.byref(size))
+        return bool(elevated.value) if ok else None
+    finally:
+        _kernel32.CloseHandle(token)
+
+
+def is_elevated(pid: int | None = None) -> bool:
+    """True if the process (default: this one) runs as administrator.
+
+    Windows blocks synthetic input from normal processes into elevated
+    windows (UIPI) without reporting an error, so callers check this first.
+    """
+    if pid is None:
+        return bool(_token_elevated(_kernel32.GetCurrentProcess()))
+    handle = _kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        return True  # cannot even query it: most likely elevated/protected
+    try:
+        return bool(_token_elevated(handle))
+    finally:
+        _kernel32.CloseHandle(handle)
+
+
 def process_image_name(pid: int) -> str:
     """Executable file name (e.g. ``slack.exe``) of a process, or ``""``."""
     handle = _kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
