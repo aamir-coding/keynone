@@ -7,6 +7,9 @@
 # Double-tap to start hands-free mode; tap once more to finish.
 # Examples: "ctrl+win", "rctrl", "capslock", "ctrl+alt+space", "f9", "ctrl+shift+d"
 dictate = "ctrl+win"
+# Speak-to-edit: select text in any app, hold this and say how to change it
+# ("make it shorter", "more formal", "translate to Spanish"). "" disables it.
+edit = "ctrl+win+alt"
 # Discards the current dictation.
 cancel = "esc"
 # A press shorter than this counts as a "tap" (used for double-tap hands-free).
@@ -34,6 +37,13 @@ handsfree_silence_stop_seconds = 0
 
 [asr]
 model = "nemotron-en-560ms-int8"
+# "en"   - English (most accurate English model)
+# "auto" - detect the language (40 locales incl. Hindi, Spanish, French, German,
+#          Italian, Portuguese, Russian, Japanese, Korean, Chinese, Arabic ...)
+# "hi", "es", "de", ... - one fixed language (most accurate for that language)
+# Anything but "en" uses the multilingual model:
+#   keynone setup --with nemotron3.5-multi-560ms-int8
+language = "en"
 threads = 4
 # Pause length that closes a sentence for early background polishing.
 endpoint_silence_seconds = 0.8
@@ -48,20 +58,39 @@ remove_fillers = true
 voice_commands = true
 # If the LLM is slower than this, the rule-based text is used instead.
 llm_timeout_seconds = 4.0
+# Write every dictation in another language, e.g. "English", "Spanish", "hi".
+# "" = off. Best with the Qwen3.5 2B model (keynone setup --with qwen3.5-2b-q4km).
+translate_to = ""
 
 [llm]
 model = "lfm2.5-1.2b-instruct-q4km"
 threads = 4
-context = 2048
+# Tokens per request slot (one slot cleans up, one rewrites selected text).
+context = 4096
+# GPU acceleration for the language model (polishing and speak-to-edit):
+# "off" (CPU), "auto" (best GPU, e.g. NVIDIA GTX 1650) or part of a device name.
+# Needs: keynone setup --with llama.cpp-b11398-vulkan-x64
+gpu = "off"
+gpu_layers = 99
 
 [insert]
 # "paste": via clipboard (fast, handles any text; your clipboard is restored afterwards)
 # "type" : simulated keystrokes (for apps that block paste)
 method = "paste"
 paste_keys = "ctrl+v"
+# Used by speak-to-edit to read the selection when UI Automation can't.
+copy_keys = "ctrl+c"
 restore_clipboard = true
 restore_delay_ms = 400
 trailing_space = true
+# Look at the text around the cursor: no capital letter mid-sentence, no double
+# spaces, a space after a word, no extra period before following text.
+smart_spacing = true
+
+[edit]
+# Speak-to-edit (hotkeys.edit): give up after this long.
+timeout_seconds = 30.0
+max_selection_chars = 8000
 
 [overlay]
 enabled = true
@@ -90,7 +119,7 @@ words = []
 # `title_match` (window-title substring) matches the active window wins.
 # Built-in profiles for chat apps, e-mail and code editors/terminals apply
 # after yours. Fields: style ("default" | "chat" | "email" | "code"), method,
-# paste_keys, trailing_space, llm_mode, drop_final_period.
+# paste_keys, copy_keys, trailing_space, llm_mode, drop_final_period.
 #
 # [[apps]]
 # name = "my-terminal"

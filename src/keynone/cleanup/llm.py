@@ -13,10 +13,12 @@ back), so each request only pays for the new transcript.
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import hashlib
 import http.client
 import json
 import logging
+import re
 import secrets
 import socket
 import subprocess
@@ -28,12 +30,20 @@ from pathlib import Path
 from typing import Any
 
 from keynone.assets import find_file, get_asset
-from keynone.cleanup.prompts import PromptBuilder, PromptStyle, TemplateFamily
+from keynone.cleanup.prompts import (
+    REWRITE_STOP,
+    PromptBuilder,
+    PromptStyle,
+    PromptVariant,
+    TemplateFamily,
+    rewrite_prompt,
+)
 from keynone.paths import Paths
 
 log = logging.getLogger(__name__)
 
 LLAMA_RUNTIME_ID = "llama.cpp-b11398-cpu-x64"
+LLAMA_VULKAN_RUNTIME_ID = "llama.cpp-b11398-vulkan-x64"
 
 # Chat-template family per registered model id.
 MODEL_FAMILIES: dict[str, TemplateFamily] = {
@@ -78,12 +88,18 @@ def _free_port() -> int:
 
 @dataclass
 class LlamaServer:
+    """A private llama-server. Slot 0 serves cleanup (cached prompt prefix),
+    slot 1 serves rewrites, so a rewrite never evicts the cleanup cache."""
+
     exe: Path
     model: Path
     threads: int = 4
-    context: int = 2048
+    context: int = 4096  # per slot
+    parallel: int = 2
     slot_dir: Path | None = None
     log_file: Path | None = None
+    gpu_device: str | None = None  # e.g. "Vulkan0"; None = CPU only
+    gpu_layers: int = 99
     extra_args: list[str] = field(default_factory=list)
 
     _proc: subprocess.Popen[bytes] | None = field(default=None, init=False, repr=False)
@@ -111,11 +127,14 @@ class LlamaServer:
             "--api-key", self._key,
             "--threads", str(self.threads),
             "--threads-batch", str(self.threads),
-            "--ctx-size", str(self.context),
-            "--parallel", "1",
+            "--ctx-size", str(self.context * self.parallel),
+            "--parallel", str(self.parallel),
             "--no-webui",
             "--cache-reuse", "0",
             *(["--slot-save-path", str(self.slot_dir)] if self.slot_dir else []),
+            # CPU mode uses the CPU-only build, so device flags only matter for GPU.
+            *(["--device", self.gpu_device, "--n-gpu-layers", str(self.gpu_layers)]
+              if self.gpu_device else []),
             *self.extra_args,
         ]
         if self.slot_dir:
@@ -202,9 +221,9 @@ class LlamaServer:
             raise LlmError(f"tokenize failed: {status} {data}")
         return list(data["tokens"])
 
-    def slot_action(self, action: str, filename: str) -> bool:
+    def slot_action(self, action: str, filename: str, slot: int = 0) -> bool:
         status, data = self._request(
-            "POST", f"/slots/0?action={action}", {"filename": filename}, timeout=30.0
+            "POST", f"/slots/{slot}?action={action}", {"filename": filename}, timeout=30.0
         )
         if status != 200:
             log.debug("slot %s failed: %s %s", action, status, data)
@@ -218,6 +237,7 @@ class LlamaServer:
         stop: list[str],
         deadline: float | None = None,
         on_text: Callable[[str], None] | None = None,
+        slot: int = 0,
     ) -> Completion:
         """Greedy completion streamed over SSE; stops early at ``deadline``."""
         body = {
@@ -226,7 +246,7 @@ class LlamaServer:
             "temperature": 0.0,
             "top_k": 1,
             "cache_prompt": True,
-            "id_slot": 0,
+            "id_slot": slot,
             "stop": stop,
             "stream": True,
             "timings_per_token": False,
@@ -280,73 +300,189 @@ class LlamaServer:
         return result
 
 
+CLEANUP_SLOT, REWRITE_SLOT = 0, 1
+
+
 class LlmPolisher:
-    """Cleans transcripts with the local LLM; thread-safe (one request at a time)."""
+    """Cleans, translates and rewrites text with the local LLM.
+
+    Cleanup requests share a fixed prompt prefix per variant (English,
+    multilingual, translation); the prefix's evaluated state is saved to disk
+    once and restored into slot 0 when needed, so each request only pays for
+    the new transcript. Rewrites use slot 1. Thread-safe (one request at a time).
+    """
 
     def __init__(self, server: LlamaServer, builder: PromptBuilder) -> None:
         self.server = server
         self.builder = builder
         self._lock = threading.Lock()
-        self._prefix_file = ""
+        self._builders: dict[tuple[str, str], PromptBuilder] = {}
+        self._loaded_prefix: str | None = None  # prefix file currently in slot 0
         self._use_slot_restore = False
-        self._primed = False
 
-    def _prefix_name(self) -> str:
-        digest = hashlib.sha256(
-            f"{self.server.model.name}|{self.builder.family}|{self.builder.prefix()}".encode()
-        ).hexdigest()[:16]
-        return f"prefix-{digest}.bin"
+    def _builder_for(self, variant: PromptVariant, target: str) -> PromptBuilder:
+        key = (variant, target if variant == "translate" else "")
+        if key not in self._builders:
+            self._builders[key] = dataclasses.replace(
+                self.builder, variant=variant, target_language=target or "English"
+            )
+        return self._builders[key]
 
-    def prime(self) -> None:
-        """Evaluate (or restore) the fixed prefix so the first request is fast."""
-        with self._lock:
-            self._prime_locked()
+    def _prefix_name(self, builder: PromptBuilder) -> str:
+        identity = (f"{self.server.model.name}|{builder.family}|{self.server.context}|"
+                    f"{self.server.gpu_device}|{builder.prefix()}")
+        return f"prefix-{hashlib.sha256(identity.encode()).hexdigest()[:16]}.bin"
 
-    def _prime_locked(self) -> None:
-        if self._primed:
+    def _load_prefix_locked(self, builder: PromptBuilder) -> None:
+        name = self._prefix_name(builder)
+        if self._loaded_prefix == name and not self._use_slot_restore:
             return
-        self._prefix_file = self._prefix_name()
         restored = False
-        if self.server.slot_dir and (self.server.slot_dir / self._prefix_file).is_file():
-            restored = self.server.slot_action("restore", self._prefix_file)
+        if self.server.slot_dir and (self.server.slot_dir / name).is_file():
+            restored = self.server.slot_action("restore", name, CLEANUP_SLOT)
         if not restored:
-            self.server.complete(self.builder.prefix(), max_tokens=0, stop=[])
+            self.server.complete(builder.prefix(), max_tokens=0, stop=[], slot=CLEANUP_SLOT)
             if self.server.slot_dir:
-                self.server.slot_action("save", self._prefix_file)
-        self._primed = True
+                self.server.slot_action("save", name, CLEANUP_SLOT)
+        self._loaded_prefix = name
+
+    def prime(self, variant: PromptVariant = "en", target: str = "English") -> None:
+        """Evaluate (or restore) a prefix so the first request is fast."""
+        with self._lock:
+            self._load_prefix_locked(self._builder_for(variant, target))
 
     def polish(
         self,
         transcript: str,
         *,
+        variant: PromptVariant = "en",
+        target: str = "English",
         deadline: float | None = None,
         on_text: Callable[[str], None] | None = None,
     ) -> Completion:
+        builder = self._builder_for(variant, target)
         with self._lock:
-            self._prime_locked()
-            if self._use_slot_restore:
-                self.server.slot_action("restore", self._prefix_file)
-            prompt = self.builder.request(transcript)
-            max_tokens = 48 + int(len(transcript.split()) * 2.2)
+            already_loaded = self._loaded_prefix == self._prefix_name(builder)
+            self._load_prefix_locked(builder)
+            if variant == "en":
+                max_tokens = 48 + int(len(transcript.split()) * 2.2)
+            else:  # scripts like Devanagari/CJK need more tokens per word
+                max_tokens = min(1024, 64 + int(len(transcript) * 1.5))
             result = self.server.complete(
-                prompt, max_tokens=max_tokens, stop=self.builder.stop, deadline=deadline,
-                on_text=on_text,
+                builder.request(transcript), max_tokens=max_tokens, stop=builder.stop,
+                deadline=deadline, on_text=on_text, slot=CLEANUP_SLOT,
             )
-            # Hybrid/recurrent models cannot roll back their cache to the shared
-            # prefix; detect that and restore the saved prefix state instead.
+            # Hybrid/recurrent models cannot roll their cache back to the shared
+            # prefix: detect it and restore the saved prefix before each request.
             if (
-                not self._use_slot_restore
+                already_loaded
+                and not self._use_slot_restore
                 and self.server.slot_dir
-                and result.prompt_tokens > len(transcript.split()) * 3 + 64
+                and result.prompt_tokens > len(transcript) // 2 + 96
             ):
                 log.info("prompt cache miss (%d tokens); switching to slot restore",
                          result.prompt_tokens)
                 self._use_slot_restore = True
             return result
 
+    def rewrite(
+        self,
+        instruction: str,
+        text: str,
+        *,
+        deadline: float | None = None,
+        on_text: Callable[[str], None] | None = None,
+    ) -> Completion:
+        """Edit ``text`` according to a spoken ``instruction`` (speak-to-edit)."""
+        prompt = rewrite_prompt(self.builder.family, instruction, text)
+        budget = self.server.context - (len(prompt) // 3) - 64
+        max_tokens = max(64, min(budget, 200 + len(text)))
+        with self._lock:
+            return self.server.complete(prompt, max_tokens=max_tokens, stop=REWRITE_STOP,
+                                        deadline=deadline, on_text=on_text, slot=REWRITE_SLOT)
+
     def close(self) -> None:
         with contextlib.suppress(Exception):
             self.server.close()
+
+
+@dataclass(frozen=True)
+class GpuDevice:
+    name: str  # llama.cpp device id, e.g. "Vulkan0"
+    description: str  # e.g. "NVIDIA GeForce GTX 1650"
+    memory_mb: int
+
+    @property
+    def discrete(self) -> bool:
+        lowered = self.description.lower()
+        return any(k in lowered for k in ("nvidia", "geforce", "rtx", "quadro", "radeon rx",
+                                          "arc a", "arc b"))
+
+
+_DEVICE_LINE_RE = re.compile(r"^\s*(\w+):\s*(.+?)\s*\((\d+)\s*MiB")
+
+
+def list_gpu_devices(exe: Path, timeout: float = 30.0) -> list[GpuDevice]:
+    """GPUs llama.cpp can use (``llama-server --list-devices``)."""
+    try:
+        out = subprocess.run([str(exe), "--list-devices"], capture_output=True, text=True,
+                             timeout=timeout, creationflags=subprocess.CREATE_NO_WINDOW,
+                             cwd=str(exe.parent), check=False)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        log.warning("could not list GPU devices: %s", exc)
+        return []
+    devices = []
+    for line in (out.stdout + out.stderr).splitlines():
+        m = _DEVICE_LINE_RE.match(line)
+        if m:
+            devices.append(GpuDevice(m.group(1), m.group(2), int(m.group(3))))
+    return devices
+
+
+def choose_gpu_device(devices: list[GpuDevice], preference: str) -> GpuDevice | None:
+    """``auto``: the discrete GPU with the most memory (else the largest); otherwise
+    the first device whose id or name contains ``preference``."""
+    if not devices:
+        return None
+    if preference.lower() == "auto":
+        return max(devices, key=lambda d: (d.discrete, d.memory_mb))
+    wanted = preference.lower()
+    return next((d for d in devices if wanted in d.name.lower() or wanted in
+                 d.description.lower()), None)
+
+
+def resolve_gpu_device(preference: str, paths: Paths) -> tuple[Path, GpuDevice] | None:
+    """Pick the Vulkan llama-server and device for ``llm.gpu``; ``None`` = use CPU."""
+    if preference.lower() in ("", "off", "none", "cpu"):
+        return None
+    runtime = get_asset(LLAMA_VULKAN_RUNTIME_ID)
+    if not runtime.is_installed(paths):
+        log.warning("llm.gpu is set but the GPU runtime is missing: keynone setup --with %s",
+                    LLAMA_VULKAN_RUNTIME_ID)
+        return None
+    exe = find_file(runtime.directory(paths), "llama-server.exe")
+    cache = paths.cache / "gpu-devices.json"
+    stamp = f"{exe}|{exe.stat().st_mtime_ns}"
+    devices: list[GpuDevice] = []
+    try:
+        cached = json.loads(cache.read_text(encoding="utf-8"))
+        if cached.get("stamp") == stamp:
+            devices = [GpuDevice(**d) for d in cached["devices"]]
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    if not devices:
+        devices = list_gpu_devices(exe)
+        with contextlib.suppress(OSError):
+            cache.parent.mkdir(parents=True, exist_ok=True)
+            cache.write_text(json.dumps({"stamp": stamp,
+                                         "devices": [vars(d) for d in devices]}),
+                             encoding="utf-8")
+    device = choose_gpu_device(devices, preference)
+    if device is None:
+        log.warning("no GPU matching %r (found: %s); using the CPU", preference,
+                    ", ".join(d.description for d in devices) or "none")
+        return None
+    return exe, device
 
 
 def build_polisher(
@@ -354,19 +490,30 @@ def build_polisher(
     paths: Paths,
     *,
     threads: int = 4,
-    context: int = 2048,
+    context: int = 4096,
     dictionary_words: tuple[str, ...] = (),
     style: PromptStyle = "doc",
+    gpu: str = "off",
+    gpu_layers: int = 99,
     job: Any | None = None,
 ) -> LlmPolisher:
     """Create and start (non-blocking) a polisher for a registered model."""
+    exe, device = llama_server_exe(paths), None
+    selected = resolve_gpu_device(gpu, paths)
+    if selected is not None:
+        exe, gpu_choice = selected
+        device = gpu_choice.name
+        log.info("LLM on GPU: %s (%s, %d MiB)", gpu_choice.name, gpu_choice.description,
+                 gpu_choice.memory_mb)
     server = LlamaServer(
-        exe=llama_server_exe(paths),
+        exe=exe,
         model=llm_model_path(model_id, paths),
         threads=threads,
         context=context,
         slot_dir=paths.cache / "llm-slots",
         log_file=paths.logs / "llama-server.log",
+        gpu_device=device,
+        gpu_layers=gpu_layers,
     )
     server.start(job)
     builder = PromptBuilder(

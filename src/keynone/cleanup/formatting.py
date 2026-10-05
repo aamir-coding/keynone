@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 
+from keynone.cleanup.language import detect_language
 from keynone.config import Style
 
 _NUMBERED_RE = re.compile(r"^(\s*)(\d+)[.)]\s+(.*)$")
@@ -31,7 +32,9 @@ def normalize_lists(text: str) -> str:
     return "\n".join(out)
 
 
-_SENTENCE_END_RE = re.compile(r"[.!?…:;,][\"'”’)\]]*$")
+_SENTENCE_END_RE = re.compile(r"[.!?…:;,。！？；：，।؟][\"'”’)\]」』]*$")
+_CJK_RE = re.compile(r"[぀-ヿ一-鿿]")  # kana + Han (no spaces between)
+_FULL_STOP = {"zh": "。", "ja": "。", "hi": "।"}
 _SUBJECTS = r"(?:you|we|i|they|he|she|anyone|someone|somebody|anybody|everyone)"
 _QUESTION_START_RE = re.compile(
     r"(?i)^(?:"
@@ -45,17 +48,31 @@ _QUESTION_START_RE = re.compile(
 
 
 def _last_sentence(line: str) -> str:
-    parts = re.split(r"(?<=[.!?…])\s+", line.strip())
+    parts = re.split(r"(?<=[.!?…。！？।])\s*", line.strip())
+    parts = [p for p in parts if p]
     return parts[-1] if parts else line
 
 
 def _close_sentence(text: str) -> str:
-    """End an unpunctuated sentence with "?" if it reads as a question, else "."."""
+    """End an unpunctuated sentence: "?" for English questions, else the full stop
+    of its language ("." / "。" / "।")."""
     last_line = text.rstrip().rsplit("\n", 1)[-1]
     if not last_line.strip() or is_list_line(last_line) or _SENTENCE_END_RE.search(last_line):
         return text
-    mark = "?" if _QUESTION_START_RE.match(_last_sentence(last_line)) else "."
+    sentence = _last_sentence(last_line)
+    language = detect_language(sentence)
+    if language == "en":
+        mark = "?" if _QUESTION_START_RE.match(sentence) else "."
+    else:
+        mark = _FULL_STOP.get(language, ".")
     return text.rstrip() + mark
+
+
+def _separator(left: str, right: str) -> str:
+    """No space between Chinese/Japanese sentences; one space otherwise (incl. Korean)."""
+    left_cjk = bool(left) and (_CJK_RE.match(left[-1]) or left.endswith(("。", "！", "？")))
+    right_cjk = bool(right) and _CJK_RE.match(right[0])
+    return "" if left_cjk and right_cjk else " "
 
 
 def join_units(units: Iterable[str]) -> str:
@@ -71,7 +88,7 @@ def join_units(units: Iterable[str]) -> str:
         elif is_list_line(out.rsplit("\n", 1)[-1]) or is_list_line(unit.split("\n", 1)[0]):
             out += "\n" + unit
         else:
-            out += " " + unit
+            out += _separator(out, unit) + unit
     return out
 
 

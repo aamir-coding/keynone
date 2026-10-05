@@ -238,12 +238,19 @@ def _cmd_bench(args: argparse.Namespace) -> int:
             polisher.close()
         return 0 if not summary["failures"] else 1
 
-    from keynone.asr import BYTES_PER_SECOND, Recognizer, model_files
+    from keynone.asr import (
+        BYTES_PER_SECOND,
+        MULTILINGUAL_MODELS,
+        Recognizer,
+        effective_model,
+        model_files,
+    )
     from keynone.bench import read_wav_mono16k
     from keynone.config import load_config
 
     config = load_config(paths)
-    model = args.model or config.asr.model
+    language = args.language or config.asr.language
+    model = args.model or effective_model(config.asr.model, language)
     wav = Path(args.wav) if args.wav else paths.data / "test_audio" / "long.wav"
     if not wav.exists():
         print(f"{wav} not found: pass --wav FILE (16 kHz mono WAV) or run "
@@ -251,8 +258,9 @@ def _cmd_bench(args: argparse.Namespace) -> int:
         return 1
     pcm = read_wav_mono16k(wav)
     recognizer = Recognizer(model_files(model, paths), threads=args.threads,
-                            endpoint_silence=config.asr.endpoint_silence_seconds)
-    stream = recognizer.stream()
+                            endpoint_silence=config.asr.endpoint_silence_seconds,
+                            multilingual=model in MULTILINGUAL_MODELS)
+    stream = recognizer.stream(language)
     started = time.perf_counter()
     worst = 0.0
     for i in range(0, len(pcm), 640):
@@ -315,6 +323,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--mode", default="auto", choices=["auto", "always", "off"])
     p.add_argument("--threads", type=int, default=4)
     p.add_argument("--wav", default=None)
+    p.add_argument("--language", default=None, help='asr: "auto", "en", "hi", ...')
+    p.add_argument("--gpu", default=None, help='cleanup: "off", "auto" or a device name')
     p.add_argument("--quiet", action="store_true")
     p.set_defaults(func=_cmd_bench)
     return parser

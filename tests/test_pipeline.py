@@ -17,9 +17,12 @@ class FakePolisher:
         self.answers = answers or {}
         self.delay = delay
         self.calls: list[str] = []
+        self.variants: list[tuple[str, str]] = []
 
-    def polish(self, transcript: str, *, deadline=None, on_text=None) -> FakeResult:
+    def polish(self, transcript: str, *, variant="en", target="English", deadline=None,
+               on_text=None) -> FakeResult:
         self.calls.append(transcript)
+        self.variants.append((variant, target))
         if self.delay:
             end = time.monotonic() + self.delay
             while time.monotonic() < end:

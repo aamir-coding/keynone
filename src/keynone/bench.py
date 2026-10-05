@@ -20,6 +20,8 @@ from importlib import resources
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from keynone.cleanup import rules
 from keynone.cleanup.pipeline import CleanupPipeline, CleanupSettings, Polisher
 from keynone.config import LlmMode
@@ -102,9 +104,42 @@ def run_cleanup_eval(
 # --------------------------------------------------------------------------- ASR
 
 
+def _pcm_to_float(frames: bytes, width: int, channels: int) -> np.ndarray:
+    if width == 1:
+        samples = (np.frombuffer(frames, np.uint8).astype(np.float32) - 128.0) / 128.0
+    elif width == 2:
+        samples = np.frombuffer(frames, "<i2").astype(np.float32) / 32768.0
+    elif width == 3:
+        raw = np.frombuffer(frames, np.uint8).reshape(-1, 3).astype(np.int32)
+        value = raw[:, 0] | (raw[:, 1] << 8) | (raw[:, 2] << 16)
+        samples = np.where(value >= 1 << 23, value - (1 << 24), value).astype(np.float32)
+        samples /= float(1 << 23)
+    elif width == 4:
+        samples = np.frombuffer(frames, "<i4").astype(np.float32) / float(1 << 31)
+    else:
+        raise ValueError(f"unsupported sample width: {width} bytes")
+    return samples.reshape(-1, channels).mean(axis=1)
+
+
+def resample(samples: np.ndarray, rate: int, target: int = 16_000) -> np.ndarray:
+    """Resample with a windowed-sinc anti-aliasing filter when downsampling."""
+    if rate == target or samples.size == 0:
+        return samples.astype(np.float32)
+    if rate > target:
+        cutoff = 0.45 * target / rate  # cycles per source sample
+        n = np.arange(101) - 50
+        taps = 2 * cutoff * np.sinc(2 * cutoff * n) * np.hamming(101)
+        samples = np.convolve(samples, taps / taps.sum(), mode="same")
+    positions = np.arange(int(samples.size * target / rate)) * (rate / target)
+    return np.interp(positions, np.arange(samples.size), samples).astype(np.float32)
+
+
 def read_wav_mono16k(path: Path) -> bytes:
-    """Return 16 kHz mono PCM16 bytes (only that format is supported here)."""
+    """Any PCM WAV (8-32 bit, mono/stereo, any rate) as 16 kHz mono PCM16 bytes."""
     with wave.open(str(path)) as w:
-        if w.getframerate() != 16000 or w.getnchannels() != 1 or w.getsampwidth() != 2:
-            raise ValueError(f"{path}: need 16 kHz mono 16-bit PCM")
-        return w.readframes(w.getnframes())
+        rate, width, channels = w.getframerate(), w.getsampwidth(), w.getnchannels()
+        frames = w.readframes(w.getnframes())
+    if (rate, width, channels) == (16_000, 2, 1):
+        return frames
+    samples = resample(_pcm_to_float(frames, width, channels), rate)
+    return (np.clip(samples, -1.0, 1.0) * 32767).astype("<i2").tobytes()

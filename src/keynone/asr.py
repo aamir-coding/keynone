@@ -24,6 +24,16 @@ log = logging.getLogger(__name__)
 SAMPLE_RATE = 16_000
 BYTES_PER_SECOND = SAMPLE_RATE * 2  # mono PCM16
 
+MULTILINGUAL_MODEL = "nemotron3.5-multi-560ms-int8"
+MULTILINGUAL_MODELS = frozenset({MULTILINGUAL_MODEL})
+
+
+def effective_model(model_id: str, language: str) -> str:
+    """English-only models cannot transcribe other languages: use the multilingual one."""
+    if language.split("-")[0].lower() != "en" and model_id not in MULTILINGUAL_MODELS:
+        return MULTILINGUAL_MODEL
+    return model_id
+
 
 @dataclass(frozen=True)
 class AsrModelFiles:
@@ -51,8 +61,11 @@ def model_files(model_id: str, paths: Paths) -> AsrModelFiles:
 class Recognizer:
     """A loaded model (expensive: ~4.5 s on a Ryzen 5); create once, reuse."""
 
-    def __init__(self, files: AsrModelFiles, *, threads: int, endpoint_silence: float) -> None:
+    def __init__(self, files: AsrModelFiles, *, threads: int, endpoint_silence: float,
+                 multilingual: bool = False) -> None:
         import sherpa_onnx  # heavy import, deferred until needed
+
+        self.multilingual = multilingual
 
         started = time.perf_counter()
         self._rec: Any = sherpa_onnx.OnlineRecognizer.from_transducer(
@@ -72,8 +85,13 @@ class Recognizer:
         self.lock = threading.Lock()
         log.info("ASR model loaded in %.2fs (%s)", self.load_seconds, files.encoder.parent.name)
 
-    def stream(self) -> Stream:
-        return Stream(self._rec, self.lock)
+    def stream(self, language: str = "auto") -> Stream:
+        """New dictation stream; ``language`` ("auto", "hi", "es-ES" ...) applies to
+        multilingual models only."""
+        stream = Stream(self._rec, self.lock)
+        if self.multilingual:
+            stream.set_language(language)
+        return stream
 
 
 class Stream:
@@ -81,6 +99,9 @@ class Stream:
 
     # Silence appended at the end so the last chunk (incl. look-ahead) is decoded.
     TAIL_PADDING_SECONDS = 0.6
+    # Silence fed before the first audio: without it the first word can be lost
+    # when speech starts right at the key press (measured on the multilingual model).
+    LEAD_IN_SECONDS = 0.3
 
     def __init__(self, recognizer: Any, lock: threading.Lock | None = None) -> None:
         self._rec = recognizer
@@ -89,9 +110,14 @@ class Stream:
         self._text = ""
         self._in_endpoint = False
         self.samples = 0
+        self._lead_in_pending = True
         # Audio time (s) at which the newest recognized token was spoken; with
         # live audio, "now - stream start - last_token_time" is the display lag.
         self.last_token_time = 0.0
+
+    def set_language(self, language: str) -> None:
+        """Language prompt for multilingual Nemotron ("auto" = detect)."""
+        self._stream.set_option("language", language or "auto")
 
     @property
     def text(self) -> str:
@@ -108,6 +134,10 @@ class Stream:
         """
         samples = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
         self.samples += samples.size
+        if self._lead_in_pending:  # after set_language(): options apply from the start
+            self._lead_in_pending = False
+            lead_in = np.zeros(int(self.LEAD_IN_SECONDS * SAMPLE_RATE), dtype=np.float32)
+            self._stream.accept_waveform(SAMPLE_RATE, lead_in)
         self._stream.accept_waveform(SAMPLE_RATE, samples)
         changed = self._decode()
         endpoint = bool(self._rec.is_endpoint(self._stream))
@@ -125,7 +155,7 @@ class Stream:
         text = str(result.text).strip()
         timestamps = list(result.timestamps)
         if timestamps:
-            self.last_token_time = float(timestamps[-1])
+            self.last_token_time = max(0.0, float(timestamps[-1]) - self.LEAD_IN_SECONDS)
         if text != self._text:
             self._text = text
             return True

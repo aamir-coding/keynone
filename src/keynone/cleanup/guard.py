@@ -92,3 +92,24 @@ def validate(source: str, candidate: str, *, has_correction: bool) -> GuardResul
     if "?" in source and "?" not in text and not has_correction:
         return GuardResult(False, text, "question mark lost (answered instead of cleaned?)")
     return GuardResult(True, text)
+
+
+def validate_translation(source: str, candidate: str) -> GuardResult:
+    """Sanity checks for a translation (word overlap can't be used across languages)."""
+    text = strip_wrappers(candidate)
+    text = re.sub(r"(?i)^translation\s*(?:\([^)]*\))?\s*:\s*", "", text).strip()
+    if not text:
+        return GuardResult(False, text, "empty output")
+    lowered = text.lower()
+    if lowered.startswith(_ASSISTANT_OPENERS) and not source.lower().startswith(
+        lowered.split()[0]
+    ):
+        return GuardResult(False, text, "assistant-style reply")
+    if "transcript:" in lowered or "translation (" in lowered:
+        return GuardResult(False, text, "prompt leaked into output")
+    # Character counts: scripts differ in density (Chinese is ~3x denser than English).
+    if len(text) > 3 * len(source) + 40:
+        return GuardResult(False, text, f"added content ({len(source)} -> {len(text)} chars)")
+    if len(source) > 30 and len(text) < 0.15 * len(source):
+        return GuardResult(False, text, f"dropped content ({len(source)} -> {len(text)} chars)")
+    return GuardResult(True, text)

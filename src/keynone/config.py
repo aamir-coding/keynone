@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import re
 import shutil
 import tomllib
 import types
@@ -32,6 +33,8 @@ class ConfigError(ValueError):
 @dataclass
 class HotkeyConfig:
     dictate: str = "ctrl+win"
+    # Hold with text selected and say how to change it ("" disables speak-to-edit).
+    edit: str = "ctrl+win+alt"
     cancel: str = "esc"
     hold_threshold_ms: int = 300
     double_tap_ms: int = 400
@@ -53,6 +56,10 @@ class AudioConfig:
 @dataclass
 class AsrConfig:
     model: str = "nemotron-en-560ms-int8"
+    # "en" (most accurate English model), "auto" (detect, 40 locales) or a
+    # language code such as "hi", "es", "de". Anything but "en" switches to the
+    # multilingual model automatically.
+    language: str = "en"
     threads: int = 4
     endpoint_silence_seconds: float = 0.8
 
@@ -63,22 +70,38 @@ class CleanupConfig:
     remove_fillers: bool = True
     voice_commands: bool = True
     llm_timeout_seconds: float = 4.0
+    # Write every dictation in this language, e.g. "English" or "es" ("" = off).
+    translate_to: str = ""
 
 
 @dataclass
 class LlmConfig:
     model: str = "lfm2.5-1.2b-instruct-q4km"
     threads: int = 4
-    context: int = 2048
+    context: int = 4096  # tokens per slot (cleanup + rewrite slots)
+    # "off" (CPU), "auto" (best GPU, e.g. GTX 1650) or part of a device name.
+    gpu: str = "off"
+    gpu_layers: int = 99
 
 
 @dataclass
 class InsertConfig:
     method: InsertMethod = "paste"
     paste_keys: str = "ctrl+v"
+    copy_keys: str = "ctrl+c"
     restore_clipboard: bool = True
     restore_delay_ms: int = 400
     trailing_space: bool = True
+    # Read the text around the cursor (UI Automation) to fix spacing/casing.
+    smart_spacing: bool = True
+
+
+@dataclass
+class EditConfig:
+    """Speak-to-edit: rewrite the selected text by voice."""
+
+    timeout_seconds: float = 30.0
+    max_selection_chars: int = 8000
 
 
 @dataclass
@@ -113,6 +136,7 @@ class AppProfile:
     style: Style = "default"
     method: InsertMethod | None = None
     paste_keys: str | None = None
+    copy_keys: str | None = None
     trailing_space: bool | None = None
     llm_mode: LlmMode | None = None
     drop_final_period: bool | None = None
@@ -152,11 +176,12 @@ BUILTIN_PROFILES: tuple[AppProfile, ...] = (
             "conhost.exe", "openconsole.exe", "wezterm-gui.exe", "alacritty.exe",
         ],
         style="code",
+        copy_keys="ctrl+insert",  # Ctrl+C would interrupt the running program
         trailing_space=False,
         llm_mode="off",
     ),
     AppProfile(name="mintty", match=["mintty.exe"], style="code", paste_keys="shift+insert",
-               trailing_space=False, llm_mode="off"),
+               copy_keys="ctrl+insert", trailing_space=False, llm_mode="off"),
     AppProfile(
         name="code",
         match=["code.exe", "cursor.exe", "windsurf.exe", "idea64.exe", "pycharm64.exe",
@@ -176,6 +201,7 @@ class Config:
     cleanup: CleanupConfig = field(default_factory=CleanupConfig)
     llm: LlmConfig = field(default_factory=LlmConfig)
     insert: InsertConfig = field(default_factory=InsertConfig)
+    edit: EditConfig = field(default_factory=EditConfig)
     overlay: OverlayConfig = field(default_factory=OverlayConfig)
     history: HistoryConfig = field(default_factory=HistoryConfig)
     privacy: PrivacyConfig = field(default_factory=PrivacyConfig)
@@ -269,6 +295,11 @@ def _validate(cfg: Config) -> None:
     check(cfg.cleanup.llm_timeout_seconds > 0, "cleanup.llm_timeout_seconds must be > 0")
     check(0.2 <= cfg.asr.endpoint_silence_seconds <= 5, "asr.endpoint_silence_seconds: 0.2..5")
     check(cfg.audio.max_session_seconds >= 5, "audio.max_session_seconds must be >= 5")
+    check(bool(re.fullmatch(r"auto|[a-z]{2,3}(-[A-Za-z]{2})?", cfg.asr.language)),
+          'asr.language must be "en", "auto" or a language code such as "hi" or "es-ES"')
+    check(cfg.llm.gpu_layers >= 0, "llm.gpu_layers must be >= 0")
+    check(cfg.edit.timeout_seconds > 0, "edit.timeout_seconds must be > 0")
+    check(cfg.edit.max_selection_chars >= 100, "edit.max_selection_chars must be >= 100")
 
 
 def parse_config(text: str) -> Config:

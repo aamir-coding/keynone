@@ -11,6 +11,7 @@ release-to-text delay short even for long dictations.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import re
 import threading
@@ -20,6 +21,8 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from keynone.cleanup import formatting, guard, rules
+from keynone.cleanup.language import base_language, detect_language, language_code, language_name
+from keynone.cleanup.prompts import PromptVariant
 from keynone.config import LlmMode
 
 log = logging.getLogger(__name__)
@@ -42,6 +45,8 @@ class Polisher(Protocol):
         self,
         transcript: str,
         *,
+        variant: PromptVariant = "en",
+        target: str = "English",
         deadline: float | None = None,
         on_text: Callable[[str], None] | None = None,
     ) -> PolishResult: ...
@@ -53,6 +58,10 @@ class CleanupSettings:
     rules: rules.RuleOptions = field(default_factory=rules.RuleOptions)
     llm_timeout: float = 4.0
     max_unit_words: int = 60
+    # "en" (English only), "auto" (detect per sentence) or a language code.
+    language: str = "en"
+    # Target language name or code ("English", "es" ...); "" = no translation.
+    translate_to: str = ""
 
 
 @dataclass
@@ -101,21 +110,47 @@ class CleanupPipeline:
         self._worker = threading.Thread(target=self._run, name="cleanup", daemon=True)
         self._worker.start()
 
+    # ----------------------------------------------------------------- language
+
+    def _unit_language(self, text: str) -> str:
+        """Language of one unit: fixed for English setups, detected otherwise."""
+        configured = base_language(self.settings.language)
+        if configured == "en":
+            return "en"
+        return detect_language(text, default="en" if configured in ("auto", "") else configured)
+
+    def _translation_target(self) -> tuple[str, str] | None:
+        """(code, display name) of ``translate_to``, or None when not translating."""
+        target = self.settings.translate_to.strip()
+        if not target:
+            return None
+        code = language_code(target)
+        name = language_name(code)
+        return code, target if name == code else name  # keep unknown names as typed
+
     # ----------------------------------------------------------------- rules
 
-    def _rules_clean(self, raw: str) -> str:
+    def _rules_clean(self, raw: str, language: str) -> str:
         """Deterministic cleanup of one unit (instant)."""
-        text = rules.clean_sentence(raw, self.settings.rules)
+        options = dataclasses.replace(self.settings.rules, language=language)
+        text = rules.clean_sentence(raw, options)
         text, _ = rules.resolve_scratches(text)
-        return rules.resolve_corrections(text)
+        return rules.resolve_corrections(text) if language == "en" else text
 
     @staticmethod
-    def _finalize(text: str) -> str:
+    def _finalize(text: str, language: str) -> str:
+        if language != "en":  # spoken-list detection understands English ordinals only
+            return text
         return rules.format_spoken_list(text) or text
 
-    def _needs_llm(self, text: str) -> bool:
+    def _needs_llm(self, text: str, language: str) -> bool:
         if self.polisher is None or self.settings.llm_mode == "off":
             return False
+        target = self._translation_target()
+        if target is not None and target[0] != language:
+            return True
+        if language != "en":  # rules are English-only: the LLM does the rest
+            return True
         correction = rules.has_correction_cue(text)
         if self.settings.llm_mode == "always":
             # Deterministic list formatting beats letting the LLM restyle a list.
@@ -235,16 +270,23 @@ class CleanupPipeline:
     def _process(self, raw: str, finish_deadline: float | None) -> str:
         if unit_is_break(raw):
             return raw
-        cleaned = self._rules_clean(raw)
-        fallback = self._finalize(cleaned)
-        if self.polisher is None or not self._needs_llm(cleaned):
+        language = self._unit_language(raw)
+        cleaned = self._rules_clean(raw, language)
+        fallback = self._finalize(cleaned, language)
+        if self.polisher is None or not self._needs_llm(cleaned, language):
             return fallback
+        target = self._translation_target()
+        translating = target is not None and target[0] != language
+        variant: PromptVariant = "translate" if translating else (
+            "en" if language == "en" else "multi")
         deadline = time.monotonic() + self.settings.llm_timeout
         if finish_deadline is not None:
             deadline = min(deadline, finish_deadline)
         self._result.llm_calls += 1
         try:
-            result = self.polisher.polish(cleaned, deadline=deadline)
+            result = self.polisher.polish(cleaned, variant=variant,
+                                          target=target[1] if target else "English",
+                                          deadline=deadline)
         except Exception as exc:  # LLM problems must never lose the dictation
             log.warning("LLM polish failed: %s", exc)
             self._result.rejections.append(f"error: {exc}")
@@ -252,18 +294,22 @@ class CleanupPipeline:
         if result.truncated:
             self._result.rejections.append("timeout")
             return fallback
-        verdict = guard.validate(cleaned, result.text,
-                                 has_correction=rules.has_correction_cue(cleaned))
+        if translating:
+            verdict = guard.validate_translation(cleaned, result.text)
+        else:
+            verdict = guard.validate(cleaned, result.text,
+                                     has_correction=rules.has_correction_cue(cleaned))
         if not verdict.ok:
             log.info("LLM output rejected: %s", verdict.reason)
             self._result.rejections.append(verdict.reason)
             return fallback
         self._result.llm_accepted += 1
-        polished = rules.tidy(verdict.text)
+        output_language = target[0] if translating and target else language
+        polished = rules.tidy(verdict.text, output_language)
         polished = rules.apply_dictionary(
             polished, self.settings.rules.words, dict(self.settings.rules.replacements)
         )
-        return self._finalize(polished)
+        return self._finalize(polished, output_language)
 
     def _notify(self) -> None:
         if self._on_update:
@@ -279,7 +325,8 @@ class CleanupPipeline:
         with self._cond:
             snapshot = [(u.raw, u.polished, u.done_version == u.version, u.is_break)
                         for u in self._units]
-        parts = [polished if done else (raw if is_break else self._rules_clean(raw))
+        parts = [polished if done else
+                 (raw if is_break else self._rules_clean(raw, self._unit_language(raw)))
                  for raw, polished, done, is_break in snapshot]
         return formatting.join_units(parts)
 
@@ -304,7 +351,8 @@ class CleanupPipeline:
                 parts.append(polished if done else raw)
             else:
                 self._result.timed_out_units += 1
-                parts.append(self._finalize(self._rules_clean(raw)))
+                language = self._unit_language(raw)
+                parts.append(self._finalize(self._rules_clean(raw, language), language))
         self._result.text = formatting.join_units(parts)
         return self._result
 

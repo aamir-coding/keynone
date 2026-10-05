@@ -18,15 +18,36 @@ import re
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 
+from keynone.cleanup.language import function_words
+
 # Marker inserted for a spoken "scratch that"; resolved by the pipeline.
 SCRATCH = "␡"  # "SYMBOL FOR DELETE": never produced by ASR
 
 # --------------------------------------------------------------------------- fillers
 
-_FILLER = r"(?:u+h*m+|u+h+|e+r+m+|e+r|a+h+|h+m+|m+h*m+|uh-huh)"
-_FILLER_RE = re.compile(
-    rf"(?i)(^|[\s,;:.!?…\"'(])(?:{_FILLER})(?:,|…|\.\.\.)?(?=$|[\s,;:.!?…\"')])"
-)
+# Non-lexical fillers per language. English "um"/"er" are real words elsewhere
+# (German "um" = "at", "er" = "he"; Portuguese "um" = "a"), so each language
+# only gets sounds that are never words in it.
+_FILLERS_BY_LANGUAGE: dict[str, str] = {
+    "en": r"u+h*m+|u+h+|e+r+m+|e+r|a+h+|h+m+|m+h*m+|uh-huh",
+    "de": r"ä+h+m*|ö+h+m*|h+m+|m+h*m+",
+    "fr": r"e+u+h+|h+e+u+|h+u+m+|h+m+|m+h*m+",
+    "es": r"e+h+|e+m+|e+h+m+|h+m+|m+h*m+",
+    "it": r"e+h+m*|h+m+|m+h*m+",
+    "pt": r"h+ã+|a+h+n+|h+m+|m+h*m+",
+    "nl": r"e+h+m*|u+h+m*|h+m+|m+h*m+",
+}
+_GENERIC_FILLERS = r"h+m+|m+h*m+"
+_FILLER_RES: dict[str, re.Pattern[str]] = {}
+
+
+def _filler_re(language: str) -> re.Pattern[str]:
+    if language not in _FILLER_RES:
+        fillers = _FILLERS_BY_LANGUAGE.get(language, _GENERIC_FILLERS)
+        _FILLER_RES[language] = re.compile(
+            rf"(?i)(^|[\s,;:.!?…\"'(¿¡])(?:{fillers})(?:,|…|\.\.\.)?(?=$|[\s,;:.!?…\"')])"
+        )
+    return _FILLER_RES[language]
 
 
 def _filler_sub(m: re.Match[str]) -> str:
@@ -36,32 +57,38 @@ def _filler_sub(m: re.Match[str]) -> str:
     return m.group(1)
 
 
-def remove_fillers(text: str) -> str:
-    """Remove non-lexical fillers (um, uh, er, hmm, mm ...)."""
+def remove_fillers(text: str, language: str = "en") -> str:
+    """Remove non-lexical fillers (um, uh, er, hmm, äh, euh ...)."""
+    pattern = _filler_re(language)
     previous = None
     while previous != text:  # adjacent fillers ("um, uh,") need repeated passes
         previous = text
-        text = _FILLER_RE.sub(_filler_sub, text)
+        text = pattern.sub(_filler_sub, text)
     return text
 
 
 # --------------------------------------------------------------------------- repetitions
 
-# Doubled words that are usually intentional.
+# Doubled words that are usually intentional (emphasis, interjections).
 _KEEP_DOUBLE = frozenset(
     """that had is very really so no bye ha haha knock yeah yes go now well there tut chop bla
-    blah la hey hi""".split()
+    blah la hey hi sí si muy ja nein oui non très sehr molto não nee""".split()
 )
 _WORD = r"[^\W\d_](?:[\w'’]*[^\W_])?"  # a word that starts with a letter
 _REPEAT_WORD_RE = re.compile(rf"(?i)\b({_WORD})(?:-?[\s,]+\1\b)+")
 _REPEAT_NGRAM_RE = re.compile(rf"(?i)\b((?:{_WORD}[\s,]+){{1,3}}{_WORD})[\s,]+\1\b")
 
 
-def remove_repetitions(text: str) -> str:
-    """Remove stutters ("I I think") and restarted phrases ("I want to, I want to go")."""
+def remove_repetitions(text: str, language: str = "en") -> str:
+    """Remove stutters ("I I think") and restarted phrases ("I want to, I want to go").
+
+    Outside English, doubled function words are kept: they are often
+    grammatical (German "die die", "das das" in relative clauses).
+    """
+    keep = _KEEP_DOUBLE if language == "en" else _KEEP_DOUBLE | function_words(language)
 
     def word_sub(m: re.Match[str]) -> str:
-        return m.group(0) if m.group(1).lower() in _KEEP_DOUBLE else m.group(1)
+        return m.group(0) if m.group(1).lower() in keep else m.group(1)
 
     previous = None
     for _ in range(4):
@@ -139,7 +166,7 @@ def _capitalize(text: str) -> str:
     return re.sub(r"(^|[.!?…]\s+|\n)([^\W\d_][\w'’-]*)", cap, text)
 
 
-def tidy(text: str) -> str:
+def tidy(text: str, language: str = "en") -> str:
     """Fix spacing/punctuation/capitalization left behind by edits."""
     text = text.replace("...", "…")
     text = re.sub(r"[ \t\f\v]+", " ", text)
@@ -148,7 +175,8 @@ def tidy(text: str) -> str:
     text = re.sub(r"[,;:.!?](?:\s*[,;:.!?])+", _collapse_punct, text)
     text = re.sub(r"(^|\n)[\s,;:.]+", r"\1", text)
     text = re.sub(r"([,;])(?=[^\W\d_])", r"\1 ", text)
-    text = re.sub(r"(?<![\w.'’-])i(?=(?:['’](?:m|d|ll|ve|s))?(?![\w.'’-]))", "I", text)
+    if language == "en":  # "i" -> "I" (in Italian "i" is an article)
+        text = re.sub(r"(?<![\w.'’-])i(?=(?:['’](?:m|d|ll|ve|s))?(?![\w.'’-]))", "I", text)
     text = _capitalize(text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip(" ")
@@ -190,11 +218,19 @@ def join_sentences(parts: Iterable[str]) -> str:
 
 # --------------------------------------------------------------------------- commands
 
-_NEWLINE_CMDS = {"new line", "newline", "next line"}
-_PARAGRAPH_CMDS = {"new paragraph", "next paragraph"}
+_NEWLINE_CMDS = {
+    "new line", "newline", "next line",
+    "nueva línea", "nouvelle ligne", "neue zeile", "nuova riga", "nova linha", "nieuwe regel",
+}
+_PARAGRAPH_CMDS = {
+    "new paragraph", "next paragraph",
+    "nuevo párrafo", "nouveau paragraphe", "neuer absatz", "nuovo paragrafo", "novo parágrafo",
+    "nieuwe alinea",
+}
 _SCRATCH_CMDS = {
     "scratch that", "delete that", "strike that", "erase that", "scratch that please",
     "delete the last sentence", "remove the last sentence", "delete last sentence",
+    "borra eso", "efface ça", "lösch das", "cancella questo", "apaga isso", "verwijder dat",
 }
 _EDGE_CMD_RE = re.compile(
     r"(?i)^(?P<lead>(?:new|next) (?:line|paragraph))[,.:]?\s+(?P<rest>.+)$"
@@ -705,6 +741,7 @@ class RuleOptions:
     voice_commands: bool = True
     words: tuple[str, ...] = ()
     replacements: tuple[tuple[str, str], ...] = ()
+    language: str = "en"  # English-only rules (times, "i" -> "I") are skipped otherwise
 
 
 _DEFAULT_OPTIONS = RuleOptions()
@@ -713,12 +750,14 @@ _DEFAULT_OPTIONS = RuleOptions()
 def clean_sentence(text: str, options: RuleOptions | None = None) -> str:
     """Rule-based cleanup for one ASR sentence (or any short text)."""
     options = options or _DEFAULT_OPTIONS
+    language = options.language
     if options.remove_fillers:
-        text = remove_fillers(text)
-        text = remove_repetitions(text)
+        text = remove_fillers(text, language)
+        text = remove_repetitions(text, language)
     text = apply_dictionary(text, options.words, dict(options.replacements))
-    text = normalize_times(text)
-    text = tidy(text)
+    if language == "en":
+        text = normalize_times(text)
+    text = tidy(text, language)
     if options.voice_commands:
         text = apply_voice_commands(text)
     return text

@@ -68,6 +68,7 @@ def _hf(repo: str, path: str, sha256: str, size: int | None = None) -> RemoteFil
 
 _NEMOTRON_160 = "csukuangfj2/sherpa-onnx-nemotron-speech-streaming-en-0.6b-160ms-int8-2026-04-25"
 _NEMOTRON_560 = "csukuangfj2/sherpa-onnx-nemotron-speech-streaming-en-0.6b-560ms-int8-2026-04-25"
+_NEMOTRON_MULTI = "csukuangfj2/sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-560ms-int8-2026-06-11"
 _GH_ASR = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/{name}"
 
 
@@ -150,6 +151,45 @@ REGISTRY: tuple[Asset, ...] = (
                 "tokens.txt",
                 "dc0b4584ab2e4ddbf888425c076c61b736e7356a015250db7d307e6f1a8188ff",
                 8952,
+            ),
+        ),
+    ),
+    Asset(
+        id="nemotron3.5-multi-560ms-int8",
+        kind="asr",
+        title="NVIDIA Nemotron 3.5 ASR Streaming 0.6B multilingual (40 locales, 560 ms, int8)",
+        license="OpenMDW-1.1",
+        source="https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b",
+        files=(
+            _hf(
+                _NEMOTRON_MULTI,
+                "encoder.int8.onnx",
+                "012e9321373af99021415e0b0eb3ec827b4be3153be6f30d9b448fe65e896e68",
+            ),
+            _hf(
+                _NEMOTRON_MULTI,
+                "decoder.int8.onnx",
+                "19f9c98fc6d0a2c33a65a43b36fdb2e914c26c0aa9764be3aebc502a1e982fb0",
+            ),
+            _hf(
+                _NEMOTRON_MULTI,
+                "joiner.int8.onnx",
+                "4101c7c679a0bc30483794b27a059e34e79232aa2068d78d51231a22c8b0d7ce",
+            ),
+            _hf(
+                _NEMOTRON_MULTI,
+                "tokens.txt",
+                "729cc103155bafa785f9cd45746cd41cabe97eab7182fc04d594129587958f8a",
+                131_440,
+            ),
+            *(
+                _hf(_NEMOTRON_MULTI, f"test_wavs/{lang}.wav", digest)
+                for lang, digest in (
+                    ("en", "eb1eb008904465b74c304aad8342e8c7d3c6e61ffe9f66adcaca9cf0f76a93f4"),
+                    ("es", "49fd2cfa4b62db7068143c582b35de9d31ec2733495ece3611105131d21de06c"),
+                    ("de", "36d3c4845b9808a1656a2a2e92d884590e2db94389e6fe559643291ae0cd3710"),
+                    ("fr", "b59be4349b92d344fb903677165eaf4694025d1ab119c608726ecbcb3164b528"),
+                )
             ),
         ),
     ),
@@ -256,6 +296,22 @@ REGISTRY: tuple[Asset, ...] = (
                 "llama-b11398-bin-win-cpu-x64.zip",
                 "a5b932cb28b2f17da93bf7111c7cbd1324cffa3a6f474aa10b616908868037a2",
                 19_386_495,
+            ),
+        ),
+    ),
+    Asset(
+        id="llama.cpp-b11398-vulkan-x64",
+        kind="runtime",
+        title="llama.cpp b11398 Windows Vulkan x64 (optional GPU acceleration, NVIDIA/AMD/Intel)",
+        license="MIT",
+        source="https://github.com/ggml-org/llama.cpp/releases/tag/b11398",
+        extract=True,
+        files=(
+            RemoteFile(
+                "https://github.com/ggml-org/llama.cpp/releases/download/b11398/"
+                "llama-b11398-bin-win-vulkan-x64.zip",
+                "llama-b11398-bin-win-vulkan-x64.zip",
+                "7887bc960d77f01da447436439407759646287250b7b263d01a325ac635fc9ac",
             ),
         ),
     ),
