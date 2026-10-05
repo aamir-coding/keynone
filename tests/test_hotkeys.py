@@ -109,3 +109,52 @@ def test_single_key_chord_is_swallowed() -> None:
 def test_disabled_machine_ignores_everything() -> None:
     m = machine(enabled=False)
     assert press(m, 0.0, VK_LCONTROL, VK_LWIN) == []
+
+
+# --------------------------------------------------------------------------- speak-to-edit
+
+VK_LMENU = 0xA4  # left Alt
+
+
+def edit_machine() -> HotkeyMachine:
+    return HotkeyMachine(Chord.parse("ctrl+win"), Chord.parse("esc"),
+                         edit=Chord.parse("ctrl+win+alt"))
+
+
+def test_edit_chord_pressed_directly() -> None:
+    m = edit_machine()
+    assert press(m, 0.0, VK_LMENU, VK_LCONTROL, VK_LWIN) == [Action.START_EDIT, Action.MASK]
+    assert m.editing
+    assert release(m, 2.0, VK_LMENU) == [Action.STOP]  # any key release ends it
+    assert release(m, 2.1, VK_LCONTROL, VK_LWIN) == []  # Ctrl+Win alone must not restart
+    assert m.state_name == "IDLE" and not m.editing
+
+
+def test_adding_alt_switches_running_dictation_to_edit() -> None:
+    m = edit_machine()
+    assert press(m, 0.0, VK_LCONTROL, VK_LWIN) == [Action.START, Action.MASK]
+    assert press(m, 0.15, VK_LMENU) == [Action.TO_EDIT, Action.MASK]  # not a cancel
+    assert release(m, 3.0, VK_LWIN, VK_LCONTROL, VK_LMENU) == [Action.STOP]
+    assert m.state_name == "IDLE"
+
+
+def test_quick_edit_tap_cancels_without_hands_free() -> None:
+    m = edit_machine()
+    press(m, 0.0, VK_LMENU, VK_LCONTROL, VK_LWIN)
+    assert release(m, 0.1, VK_LMENU, VK_LCONTROL, VK_LWIN) == [Action.CANCEL]
+    assert m.on_tick(1.0) == []
+    assert m.state_name == "IDLE"
+
+
+def test_without_edit_chord_alt_is_a_foreign_key() -> None:
+    m = machine()  # no edit chord configured
+    press(m, 0.0, VK_LCONTROL, VK_LWIN)
+    assert press(m, 0.1, VK_LMENU) == [Action.CANCEL]
+    assert press(machine(), 0.0, VK_LMENU, VK_LCONTROL, VK_LWIN) == []
+
+
+def test_dictation_still_works_with_edit_chord_configured() -> None:
+    m = edit_machine()
+    assert press(m, 0.0, VK_LCONTROL, VK_LWIN) == [Action.START, Action.MASK]
+    assert release(m, 1.5, VK_LCONTROL, VK_LWIN) == [Action.STOP]
+    assert not m.editing

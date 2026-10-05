@@ -82,7 +82,8 @@ class ListenerApp:
         hk = config.hotkeys
         return HotkeyMachine(Chord.parse(hk.dictate),
                              Chord.parse(hk.cancel) if hk.cancel else None,
-                             hold_ms=hk.hold_threshold_ms, double_tap_ms=hk.double_tap_ms)
+                             hold_ms=hk.hold_threshold_ms, double_tap_ms=hk.double_tap_ms,
+                             edit=Chord.parse(hk.edit) if hk.edit else None)
 
     def _tooltip(self) -> str:
         return f"Keynone - hold {Chord.parse(self.config.hotkeys.dictate)} to dictate"
@@ -183,6 +184,12 @@ class ListenerApp:
     def _handle(self, item: Any) -> None:
         if item is Action.START:
             self._start_session()
+        elif item is Action.START_EDIT:
+            self._start_session(mode="edit")
+        elif item is Action.TO_EDIT:
+            if self._capture is not None:
+                self.engine.send_json(Msg.MODE, {"mode": "edit"})
+                self.cues.play("edit")
         elif item is Action.STOP:
             self._stop_session()
         elif item is Action.CANCEL:
@@ -201,7 +208,7 @@ class ListenerApp:
             elif kind == "balloon":
                 self.tray.balloon(args[0], args[1], warning=True)
 
-    def _start_session(self) -> None:
+    def _start_session(self, mode: str = "ptt") -> None:
         self._maybe_reload_config()
         if self._quit_timer is not None:
             self._quit_timer.cancel()
@@ -210,7 +217,7 @@ class ListenerApp:
         self.engine.ensure_started()
         self._sid += 1
         self._active_sid = self._sid
-        self.engine.send_json(Msg.START, {"sid": self._sid, "mode": "ptt", "target_hwnd": target,
+        self.engine.send_json(Msg.START, {"sid": self._sid, "mode": mode, "target_hwnd": target,
                                           "insert": not self.dry_run})
         engine = self.engine
         self._capture = AudioCapture(lambda pcm: engine.send(Msg.AUDIO, pcm),
@@ -226,7 +233,7 @@ class ListenerApp:
             self.tray.balloon("Microphone unavailable", str(exc), warning=True)
             return
         self._session_started = time.monotonic()
-        self.cues.play("start")
+        self.cues.play("edit" if mode == "edit" else "start")
         self.tray.set_icon(self._icon_rec)
 
     def _stop_capture(self) -> None:
@@ -297,9 +304,15 @@ class ListenerApp:
     def _menu(self) -> list[MenuItem]:
         chord = Chord.parse(self.config.hotkeys.dictate)
         paused = not self.machine.enabled
-        return [
+        items: list[MenuItem] = [
             (f"Keynone - hold {chord} to dictate", None),
             (f"Double-tap {chord} for hands-free, Esc cancels", None),
+        ]
+        if self.config.hotkeys.edit:
+            items.append((f"Select text + hold {Chord.parse(self.config.hotkeys.edit)} to edit "
+                           "it by voice", None))
+        return [
+            *items,
             ("-", None),
             ("Copy last dictation", self._copy_last),
             ("Open settings", lambda: os.startfile(self.paths.config_file)),

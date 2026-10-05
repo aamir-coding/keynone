@@ -66,6 +66,33 @@ class Inserter:
             log.warning("insertion failed: %s", exc)
             return self._to_clipboard(text, "Insertion failed")
 
+    def copy_selection(self, profile: AppProfile, timeout: float = 0.8) -> str | None:
+        """Copy the target app's selection via the clipboard, then restore it.
+
+        Used by speak-to-edit when UI Automation can't read the selection.
+        Returns None when nothing was copied (no selection, or copy unsupported).
+        """
+        if not keys.wait_for_modifiers_released(1.5):
+            return None
+        snapshot = None
+        with contextlib.suppress(clipboard.ClipboardBusyError):
+            snapshot = clipboard.snapshot()
+        before = clipboard.sequence_number()
+        keys.send_chord(keys.Chord.parse(profile.copy_keys or self.config.copy_keys))
+        text = None
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if clipboard.sequence_number() != before:
+                time.sleep(0.05)  # let the app finish writing all formats
+                with contextlib.suppress(clipboard.ClipboardBusyError):
+                    text = clipboard.get_text()
+                break
+            time.sleep(0.02)
+        if snapshot is not None and snapshot.complete and clipboard.sequence_number() != before:
+            with contextlib.suppress(clipboard.ClipboardBusyError):
+                clipboard.restore(snapshot, clipboard.sequence_number())
+        return text
+
     def _paste(self, text: str, profile: AppProfile) -> InsertResult:
         snapshot = None
         if self.config.restore_clipboard:

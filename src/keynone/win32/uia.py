@@ -136,7 +136,8 @@ class UiaClient:
         element = self._automation.GetFocusedElement()
         return element if element else None
 
-    def _context(self, before_chars: int, after_chars: int, max_selection: int) -> CaretContext | None:
+    def _context(self, before_chars: int, after_chars: int,
+                 max_selection: int) -> CaretContext | None:
         element = self._focused()
         if element is None:
             return None

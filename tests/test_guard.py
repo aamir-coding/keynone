@@ -51,6 +51,50 @@ def test_corrections_may_shrink_a_lot() -> None:
     assert validate(source, "Book the big conference room for Tuesday.", has_correction=True).ok
 
 
+@pytest.mark.parametrize(
+    ("original", "candidate", "expected"),
+    [
+        ("hey, can't come", "Hello, I am unable to attend.", "Hello, I am unable to attend."),
+        ("hey, can't come", "Sure! Here is the revised text:\nHello, I can't come.",
+         "Hello, I can't come."),
+        ("hi there", 'Here\'s the edited version: "Hi there!"', "Hi there!"),
+        ("  line one\n", "Line one.", "  Line one.\n"),  # keep the selection's outer whitespace
+    ],
+)
+def test_validate_rewrite_accepts_and_cleans(original: str, candidate: str,
+                                             expected: str) -> None:
+    from keynone.cleanup.guard import validate_rewrite
+
+    result = validate_rewrite(original, candidate)
+    assert result.ok, result.reason
+    assert result.text == expected
+
+
+@pytest.mark.parametrize(
+    ("candidate", "reason"),
+    [
+        ("", "empty"),
+        ("I'm sorry, but I can't help with that.", "declined"),
+        ("Instruction: shorten\nText: hi", "leaked"),
+        ("word " * 400, "longer"),
+    ],
+)
+def test_validate_rewrite_rejects(candidate: str, reason: str) -> None:
+    from keynone.cleanup.guard import validate_rewrite
+
+    result = validate_rewrite("a short selection", candidate)
+    assert not result.ok and reason in result.reason
+
+
+def test_validate_translation() -> None:
+    from keynone.cleanup.guard import validate_translation
+
+    assert validate_translation("Wir treffen uns morgen.", "We'll meet tomorrow.").ok
+    assert validate_translation("明天见。", "See you tomorrow.").ok
+    assert not validate_translation("Hola.", "Sure! Here you go: Hello.").ok
+    assert not validate_translation("Hola.", "Transcript: Hola. Translation (English): Hello").ok
+
+
 def test_strip_wrappers() -> None:
     assert strip_wrappers('Cleaned text: "Hello there."') == "Hello there."
     assert strip_wrappers("```\nHello\n```") == "Hello"

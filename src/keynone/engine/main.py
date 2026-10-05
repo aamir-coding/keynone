@@ -25,6 +25,7 @@ from keynone.logging_setup import setup_logging
 from keynone.paths import get_paths
 from keynone.win32 import api
 from keynone.win32.process import KillOnCloseJob
+from keynone.win32.uia import UiaClient
 
 log = logging.getLogger(__name__)
 
@@ -51,6 +52,10 @@ def run_engine(*, verbose: bool = False, overlay_enabled: bool | None = None) ->
     history = History(paths.history_db, enabled=config.history.enabled,
                       retention_days=config.history.retention_days)
     inserter = Inserter(config.insert)
+    uia: UiaClient | None = None
+    if config.insert.smart_spacing or config.hotkeys.edit:
+        uia = UiaClient()
+        uia.warm_up()  # first use builds COM wrappers (~1 s): do it while models load
     events.send("hello", pid=os.getpid())
     threading.Thread(target=_report_ready, args=(models, events, started), daemon=True).start()
 
@@ -80,7 +85,7 @@ def run_engine(*, verbose: bool = False, overlay_enabled: bool | None = None) ->
                 meta = SessionMeta(**json.loads(payload))
                 current = Session(meta, config=config, models=models, overlay=overlay,
                                   inserter=inserter, history=history, on_finished=finished,
-                                  on_event=events.send)
+                                  on_event=events.send, uia=uia)
                 current.start()
             elif kind is Msg.STOP:
                 if current is not None:
@@ -100,6 +105,8 @@ def run_engine(*, verbose: bool = False, overlay_enabled: bool | None = None) ->
         models.close()
         overlay.close()
         history.close()
+        if uia is not None:
+            uia.close()
         job.close()
         log.info("engine exiting")
     return 0

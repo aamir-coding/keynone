@@ -168,7 +168,9 @@ class PromptBuilder:
         return "\n".join(parts)
 
     def _answer_label(self) -> str:
-        return f"Translation ({self.target_language}):" if self.variant == "translate" else "Cleaned:"
+        if self.variant == "translate":
+            return f"Translation ({self.target_language}):"
+        return "Cleaned:"
 
     # ----------------------------------------------------------------- chat style
 

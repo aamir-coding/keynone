@@ -131,6 +131,11 @@ def set_text(text: str, *, private: bool = True) -> int:
     return int(api.GetClipboardSequenceNumber())
 
 
+def sequence_number() -> int:
+    """Changes whenever any application writes to the clipboard."""
+    return int(api.GetClipboardSequenceNumber())
+
+
 def get_text() -> str | None:
     with _Opened():
         handle = api.GetClipboardData(CF_UNICODETEXT)

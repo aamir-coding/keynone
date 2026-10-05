@@ -8,6 +8,11 @@ Gestures for the dictation chord (default Ctrl+Win):
 * chord + another key within the hold threshold (e.g. Ctrl+Win+D) -> that was
   a different shortcut: the dictation is cancelled silently
 * the cancel key (Esc) during a dictation -> discard it
+
+Speak-to-edit chord (default Ctrl+Win+Alt): hold it, say how to change the
+selected text, release. Adding its extra key while already holding the
+dictation chord switches the running session to edit mode, so the order in
+which the keys are pressed doesn't matter.
 """
 
 from __future__ import annotations
@@ -20,7 +25,9 @@ from keynone.win32.keys import MODIFIER_VKS, Chord
 
 
 class Action(Enum):
-    START = auto()  # begin recording (push-to-talk)
+    START = auto()  # begin recording (push-to-talk dictation)
+    START_EDIT = auto()  # begin recording a speak-to-edit instruction
+    TO_EDIT = auto()  # the running session became speak-to-edit
     STOP = auto()  # finish and insert
     CANCEL = auto()  # discard
     HANDSFREE = auto()  # the running dictation became hands-free
@@ -43,8 +50,10 @@ class HotkeyMachine:
     hold_ms: int = 300
     double_tap_ms: int = 400
     enabled: bool = True
+    edit: Chord | None = None
 
     _state: _State = field(default=_State.IDLE, init=False)
+    _editing: bool = field(default=False, init=False)
     _pressed: set[int] = field(default_factory=set, init=False)
     _t_down: float = field(default=0.0, init=False)
     _tap_deadline: float = field(default=0.0, init=False)
@@ -59,17 +68,31 @@ class HotkeyMachine:
     def state_name(self) -> str:
         return self._state.name
 
+    @property
+    def editing(self) -> bool:
+        return self._editing
+
     def reset(self) -> None:
         """Forget the current gesture (e.g. after an automatic stop)."""
         with self._lock:
             self._state = _State.IGNORE if self._chord_keys_down() else _State.IDLE
+            self._editing = False
+
+    def _involves(self, vk: int) -> bool:
+        return self.chord.involves(vk) or (self.edit is not None and self.edit.involves(vk))
 
     def _chord_keys_down(self) -> bool:
-        return any(self.chord.involves(vk) for vk in self._pressed)
+        return any(self._involves(vk) for vk in self._pressed)
 
     def _suppressible(self, vk: int) -> bool:
         # Never swallow modifiers: other shortcuts (Ctrl+C ...) need them.
-        return self.chord.involves(vk) and vk not in MODIFIER_VKS
+        return self._involves(vk) and vk not in MODIFIER_VKS
+
+    def _mask(self, chord: Chord) -> list[Action]:
+        return [Action.MASK] if chord.needs_menu_mask else []
+
+    def _after_release(self) -> _State:
+        return _State.IGNORE if self._chord_keys_down() else _State.IDLE
 
     def on_key(self, vk: int, down: bool, now: float) -> tuple[bool, list[Action]]:
         """Process one physical key event at time ``now`` (seconds).
@@ -84,22 +107,30 @@ class HotkeyMachine:
 
     def _on_key(self, vk: int, down: bool, now: float) -> tuple[bool, list[Action]]:
         repeat = down and vk in self._pressed
-        before = self.chord.satisfied_by(self._pressed)
-        prev_state = self._state
+        before = set(self._pressed)
         if down:
             self._pressed.add(vk)
         else:
             self._pressed.discard(vk)
-        after = self.chord.satisfied_by(self._pressed)
-        pressed_chord = down and after and not before and not repeat
-        released_chord = not down and before and not after
-        swallow = self._suppressible(vk) and (prev_state is not _State.IDLE or pressed_chord)
+        dict_before, dict_after = (self.chord.satisfied_by(before),
+                                   self.chord.satisfied_by(self._pressed))
+        edit_before = self.edit is not None and self.edit.satisfied_by(before)
+        edit_after = self.edit is not None and self.edit.satisfied_by(self._pressed)
+        pressed_dict = down and dict_after and not dict_before and not repeat
+        pressed_edit = down and edit_after and not edit_before and not repeat
+        if self._editing:
+            released = not down and edit_before and not edit_after
+        else:
+            released = not down and dict_before and not dict_after
+        prev_state = self._state
+        swallow = self._suppressible(vk) and (prev_state is not _State.IDLE or pressed_dict
+                                              or pressed_edit)
         actions: list[Action] = []
-        mask = [Action.MASK] if self.chord.needs_menu_mask else []
 
         if (down and not repeat and self.cancel is not None and self.cancel.satisfied_by({vk})
-                and self.active and not self.chord.involves(vk)):
-            self._state = _State.IGNORE if self._chord_keys_down() else _State.IDLE
+                and self.active and not self._involves(vk)):
+            self._state = self._after_release()
+            self._editing = False
             return True, [Action.CANCEL]
 
         if repeat:
@@ -107,37 +138,53 @@ class HotkeyMachine:
 
         state = self._state
         if state is _State.IDLE:
-            if pressed_chord:
-                self._state, self._t_down = _State.HOLDING, now
-                actions = [Action.START, *mask]
+            if pressed_edit and self.edit is not None:
+                self._state, self._t_down, self._editing = _State.HOLDING, now, True
+                actions = [Action.START_EDIT, *self._mask(self.edit)]
+            elif pressed_dict:
+                self._state, self._t_down, self._editing = _State.HOLDING, now, False
+                actions = [Action.START, *self._mask(self.chord)]
         elif state is _State.HOLDING:
-            if down and not self.chord.involves(vk):
+            if pressed_edit and not self._editing and self.edit is not None:
+                self._editing = True  # e.g. Ctrl+Win first, then Alt
+                actions = [Action.TO_EDIT, *self._mask(self.edit)]
+            elif down and not self._involves(vk):
                 if (now - self._t_down) * 1000 < self.hold_ms:
                     self._state = _State.IGNORE  # it was another shortcut
+                    self._editing = False
                     actions = [Action.CANCEL]
-            elif released_chord:
+            elif released:
                 if (now - self._t_down) * 1000 >= self.hold_ms:
-                    self._state = _State.IGNORE if self._chord_keys_down() else _State.IDLE
                     actions = [Action.STOP]
+                    self._state = self._after_release()
+                elif self._editing:  # no hands-free for edits: a tap just cancels
+                    actions = [Action.CANCEL]
+                    self._state = self._after_release()
+                    self._editing = False
                 else:
                     self._state = _State.PENDING_TAP
                     self._tap_deadline = now + self.double_tap_ms / 1000
         elif state is _State.PENDING_TAP:
-            if pressed_chord:
+            if pressed_edit and self.edit is not None:
+                self._state, self._t_down, self._editing = _State.HOLDING, now, True
+                actions = [Action.TO_EDIT, *self._mask(self.edit)]
+            elif pressed_dict:
                 self._state = _State.ARMING
-                actions = [Action.HANDSFREE, *mask]
-            elif down and not self.chord.involves(vk):
+                actions = [Action.HANDSFREE, *self._mask(self.chord)]
+            elif down and not self._involves(vk):
                 self._state = _State.IDLE  # typing resumed: the tap was accidental
                 actions = [Action.CANCEL]
         elif state is _State.ARMING:
             if not self._chord_keys_down():
                 self._state = _State.HANDSFREE
         elif state is _State.HANDSFREE:
-            if pressed_chord:
+            if pressed_dict or pressed_edit:
                 self._state = _State.IGNORE
-                actions = [Action.STOP, *mask]
+                actions = [Action.STOP, *self._mask(self.chord)]
         elif state is _State.IGNORE and not self._chord_keys_down():
             self._state = _State.IDLE
+        if self._state in (_State.IDLE, _State.IGNORE) and Action.STOP in actions:
+            self._editing = False
         return swallow, actions
 
     def on_tick(self, now: float) -> list[Action]:

@@ -107,6 +107,12 @@ def _cmd_transcribe(args: argparse.Namespace) -> int:
     config = load_config(paths)
     if args.mode:
         config.cleanup.llm_mode = args.mode
+    if args.language:
+        config.asr.language = args.language
+    if args.translate_to is not None:
+        config.cleanup.translate_to = args.translate_to
+    if args.gpu:
+        config.llm.gpu = args.gpu
     api.enable_dpi_awareness()
     job = KillOnCloseJob()
     models = EngineModels(config, paths, job)
@@ -225,8 +231,10 @@ def _cmd_bench(args: argparse.Namespace) -> int:
         job = KillOnCloseJob()
         polisher = None
         if args.mode != "off":
-            polisher = build_polisher(args.model, paths, threads=args.threads, job=job)
-            if not polisher.server.wait_ready(60):
+            polisher = build_polisher(args.model, paths, threads=args.threads,
+                                      gpu=args.gpu or "off", job=job)
+            print(f"LLM device: {polisher.server.gpu_device or 'CPU'}")
+            if not polisher.server.wait_ready(90):
                 print("llama-server failed to start (see data/logs/llama-server.log)")
                 return 1
             polisher.prime()
@@ -308,6 +316,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--mode", choices=["auto", "always", "off"], help="override cleanup.llm_mode")
     p.add_argument("--realtime", action="store_true", help="feed audio at real-time speed")
     p.add_argument("--overlay", action="store_true", help="show the live overlay")
+    p.add_argument("--language", help='override asr.language ("auto", "hi", "es", ...)')
+    p.add_argument("--translate-to", dest="translate_to", default=None,
+                   help='override cleanup.translate_to (e.g. "English")')
+    p.add_argument("--gpu", help='override llm.gpu ("off", "auto", device name)')
     p.set_defaults(func=_cmd_transcribe)
 
     p = sub.add_parser("history", help="show recent dictations")

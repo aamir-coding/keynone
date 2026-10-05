@@ -94,6 +94,32 @@ def validate(source: str, candidate: str, *, has_correction: bool) -> GuardResul
     return GuardResult(True, text)
 
 
+_REWRITE_PREAMBLE_RE = re.compile(
+    r"(?is)^(?:(?:sure|certainly|of course|okay|ok)[,!.]?\s*)?"
+    r"(?:here(?:'s| is| are)\s+(?:the\s+|your\s+)?[^:\n]{0,60}:\s*)"
+)
+_REFUSAL_RE = re.compile(
+    r"(?i)^(?:i'?m sorry|i am sorry|i can(?:not|'t)|as an ai|i'?m unable|i am unable)"
+)
+
+
+def validate_rewrite(original: str, candidate: str) -> GuardResult:
+    """Check and clean a speak-to-edit result; keeps the selection's outer whitespace."""
+    text = strip_wrappers(candidate)
+    text = strip_wrappers(_REWRITE_PREAMBLE_RE.sub("", text, count=1))
+    if not text:
+        return GuardResult(False, text, "empty output")
+    if _REFUSAL_RE.match(text):
+        return GuardResult(False, text, "the model declined the instruction")
+    if re.search(r"(?im)^(?:instruction|text)\s*:", text):
+        return GuardResult(False, text, "prompt leaked into output")
+    if len(text) > 4 * len(original) + 600:
+        return GuardResult(False, text, "output far longer than the selection")
+    leading = original[: len(original) - len(original.lstrip())]
+    trailing = original[len(original.rstrip()) :]
+    return GuardResult(True, leading + text + trailing)
+
+
 def validate_translation(source: str, candidate: str) -> GuardResult:
     """Sanity checks for a translation (word overlap can't be used across languages)."""
     text = strip_wrappers(candidate)
