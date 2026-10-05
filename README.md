@@ -27,6 +27,10 @@ release the key, **0 % CPU** while idle.
 | Personal dictionary | Your spellings for names and jargon |
 | History | Local SQLite; "Copy last dictation" in the tray |
 | Private & contained | Offline after setup; every file lives inside this folder |
+| **Speak-to-edit** | Select text anywhere, hold **Ctrl+Win+Alt**, say "make it shorter" / "more formal" / "translate to Spanish" — the selection is rewritten |
+| **Smart spacing** | Reads the text around the cursor: lowercase mid-sentence, one space between words, no doubled punctuation, lists start on a new line; detects password fields in browsers too |
+| **Multilingual** | 40 locales (Hindi, Spanish, French, German, Italian, Portuguese, Russian, Japanese, Korean, Chinese, Arabic …), auto-detected; optional translation of every dictation |
+| **GPU boost (optional)** | The language model on your GPU (e.g. GTX 1650 via Vulkan): ~3× faster polishing, ~5× faster speak-to-edit |
 
 ## Quick start
 
@@ -40,6 +44,8 @@ Then double-click **`Keynone.cmd`**. A microphone icon appears in the tray.
 
 * **Hold Ctrl+Win** and speak → release to insert.
 * **Double-tap Ctrl+Win** → hands-free; tap again to finish.
+* **Select text, hold Ctrl+Win+Alt** and say how to change it → release; the
+  selection is replaced (Ctrl+Z undoes it in most apps).
 * **Esc** → cancel.
 * Stop: tray icon → *Quit Keynone*, or `Keynone-stop.cmd`.
 
@@ -79,6 +85,40 @@ Maximum polish (slower, Apache-2.0 model):
 `keynone setup --with qwen3.5-2b-q4km`, then set `llm.model = "qwen3.5-2b-q4km"`
 and `cleanup.llm_mode = "always"`.
 
+### Other languages
+
+```bash
+keynone setup --with nemotron3.5-multi-560ms-int8
+```
+
+```toml
+[asr]
+language = "auto"         # or a fixed language: "hi", "es", "de", "fr", "ja" ...
+
+[cleanup]
+translate_to = ""         # e.g. "English": every dictation is written in English
+```
+
+English keeps the more accurate English-only model (`language = "en"`). For
+other languages the same instant rules apply where they are safe (fillers such
+as "äh", "euh"; repetitions), and the LLM steps in only for sentences with a
+self-correction or filler cue. Translation quality is best with Qwen3.5 2B.
+
+### GPU acceleration
+
+```bash
+keynone setup --with llama.cpp-b11398-vulkan-x64
+```
+
+```toml
+[llm]
+gpu = "auto"              # picks the discrete GPU (e.g. NVIDIA GTX 1650); "off" = CPU
+```
+
+Speech recognition stays on the CPU (it is already ~3× faster than real time);
+the GPU accelerates the language model. If the GPU can't be used, Keynone falls
+back to the CPU automatically. `keynone doctor` lists the GPUs it can see.
+
 ## Command line
 
 ```bash
@@ -93,8 +133,8 @@ and `cleanup.llm_mode = "always"`.
 | `keynone doctor` | Check installation, models, microphone |
 | `keynone devices` | List microphones |
 | `keynone history [-n 20]` | Recent dictations |
-| `keynone transcribe a.wav [b.wav…] [--realtime]` | Run WAV files through the full pipeline |
-| `keynone bench cleanup` / `keynone bench asr` | Quality and speed benchmarks |
+| `keynone transcribe a.wav [b.wav…] [--realtime] [--language auto] [--translate-to English] [--gpu auto]` | Run WAV files (any PCM format) through the full pipeline |
+| `keynone bench cleanup [--gpu auto]` / `keynone bench asr [--language auto]` | Quality and speed benchmarks |
 | `keynone autostart enable\|disable\|status` | Start at Windows sign-in (creates a Startup shortcut — the only file written outside this folder) |
 
 ## Privacy
@@ -102,7 +142,9 @@ and `cleanup.llm_mode = "always"`.
 No network after setup, no telemetry. The local LLM server listens only on
 127.0.0.1 with a random key. Transcripts are kept only in `data/history.db`
 (disable with `[history] enabled = false`) and never written to logs unless
-`privacy.log_transcripts = true`. Password fields are skipped.
+`privacy.log_transcripts = true`. Password fields are skipped (detected via UI
+Automation, which reads only the few characters around the cursor, only at the
+moment of inserting, and never stores them).
 
 ## Development
 
@@ -114,7 +156,7 @@ uv run python scripts/make_test_audio.py   # synthesized test dictations
 uv run keynone transcribe --realtime data/test_audio/*.wav
 ```
 
-Desktop tests (type into their own window, open the mic for ~2 s):
+Desktop tests (type into their own window, open the mic for ~2 s, start the LLM):
 `$env:KEYNONE_DESKTOP_TESTS="1"; uv run pytest tests/test_desktop_*.py`
 
 Docs: [feasibility & model selection](docs/01-feasibility-and-model-selection.md) ·
@@ -126,8 +168,10 @@ src/keynone/
   listener/   hotkey state machine, engine process manager, tray app
   engine/     session, overlay, insertion, history, model loading
   cleanup/    rules, correction resolver, segmenter, pipeline, LLM, guard, prompts
+  cleanup/language.py  per-sentence language detection
   win32/      ctypes Win32 layer (hook, waveIn, clipboard, SendInput, windows, tray)
-  asr.py      streaming speech recognition (sherpa-onnx)
+  win32/uia.py  UI Automation client (text around the cursor, selection, password fields)
+  asr.py      streaming speech recognition (sherpa-onnx; English or multilingual)
   assets.py   pinned model registry + verified downloader
 ```
 
@@ -136,9 +180,11 @@ src/keynone/
 | Component | License |
 |---|---|
 | NVIDIA Nemotron Speech Streaming EN 0.6B (speech) | NVIDIA Open Model License |
+| NVIDIA Nemotron 3.5 ASR Streaming 0.6B (optional, multilingual speech) | OpenMDW-1.1 |
 | Liquid LFM2.5 1.2B Instruct (cleanup) | LFM Open License v1.0 (free for individuals and organizations under $10M revenue) |
 | Qwen3.5 2B (optional) | Apache-2.0 |
 | sherpa-onnx / ONNX Runtime | Apache-2.0 / MIT |
-| llama.cpp | MIT |
+| llama.cpp (CPU and optional Vulkan build) | MIT |
+| comtypes (UI Automation) | MIT |
 
 Keynone is an independent project and is not affiliated with Typeless.

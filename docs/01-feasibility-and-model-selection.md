@@ -99,12 +99,24 @@ Cold start (first dictation after the engine unloaded): ASR ready after ~4.6–5
 | Dictating | ~30 % of 4 threads (ASR) + LLM bursts | same |
 | Disk | — | ~1.4 GB default models (+1.3 GB optional Qwen3.5 2B) |
 
-## 1.6 Known limitations
+## 1.6 Extras (v0.2) — measured on the same machine
 
-* English only by default. NVIDIA's multilingual *Nemotron 3.5 ASR Streaming*
-  (40 locales, sherpa-onnx exports exist) is the natural next step.
+| Extra | Approach | Measured result |
+|---|---|---|
+| Multilingual speech | NVIDIA Nemotron 3.5 ASR Streaming 0.6B (40 locales incl. Hindi), sherpa-onnx per-stream `language` option (`auto` or a code) | Load 3.5 s, RTF 0.31 (4 threads), worst chunk 172–220 ms — same as English. Sample recordings in English, Spanish, German and French transcribed correctly with punctuation. A 0.3 s silence lead-in was needed to keep the first word when speech starts instantly (multilingual model only; the English model measurably did better without it) |
+| Language-aware cleanup | Per-sentence language detection (script + function words); English rules only for English; per-language fillers ("äh", "euh") and correction cues; LLM only for sentences with a cue, behind a strict guard | Found and fixed a real failure: the 1.2B model rewrote a correct Spanish sentence and changed its meaning — now plain sentences keep the recognizer's text and the strict guard rejects invented words |
+| Translation | Document-continuation prompt with a target-language label | Spanish/German/French samples translated to English; quality is limited by the 1.2B model (Qwen3.5 2B recommended) |
+| Smart spacing | UI Automation (TextPattern) reads ~80 chars before / 16 after the caret on a dedicated MTA thread with hard timeouts | First call ~1 s (COM wrappers, done in the background at engine start), then ~7 ms. Verified in a real text box: "I think" + "We should go." → "I think we should go." |
+| Speak-to-edit | Ctrl+Win+Alt; selection via UI Automation (clipboard copy as fallback), rewrite on a second llama-server slot so the cleanup cache stays intact, guarded, pasted over the selection | 80-word paragraph: 2.9–3.5 s on CPU, 0.5–0.7 s on GPU; verified end to end in a real text box |
+| GPU | Official llama.cpp Vulkan build (32 MB, no CUDA install); `auto` prefers the discrete GPU (the iGPU reports more shared memory, so "largest memory" would pick the wrong one); automatic CPU fallback | GTX 1650: 136–138 tok/s vs 41 tok/s on CPU; cleanup eval p95 165 ms vs 486 ms; 33/34 vs 34/34 (one near-tie decision differs due to GPU floating point) |
+
+## 1.7 Known limitations
+
+* English is the default; other languages use the multilingual model (slightly
+  less accurate for English) and lean on rules more than the LLM.
 * Elevated (admin) windows can't receive synthetic input from a normal process
   (Windows UIPI): Keynone detects this and copies the text to the clipboard.
-* Password fields are detected for classic Win32 controls only (browsers need
-  UI Automation, planned).
+* Smart spacing and password detection need UI Automation support in the target
+  app (Win32 controls, Office, browsers and most modern apps have it); without
+  it Keynone inserts exactly as v1 did.
 * The first dictation after the engine unloads waits ~5 s for the model.

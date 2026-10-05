@@ -11,6 +11,7 @@
 | 4. Desktop | Low-level hotkey hook + gesture state machine, MME capture, clipboard paste/restore, Unicode typing, overlay, tray, sounds, job objects | ✅ |
 | 5. Lifecycle | Dormant listener, on-demand engine, warm period / strict mode, dry-run, stop, autostart | ✅ |
 | 6. Quality | 160+ unit tests, engine IPC integration test, opt-in desktop tests, ruff + mypy clean, end-to-end runs on synthesized speech | ✅ |
+| 7. Extras (v0.2) | Speak-to-edit, smart spacing + UIA password detection, multilingual speech + language-aware cleanup + translation, optional GPU (Vulkan) with CPU fallback | ✅ see doc 01 §1.6 |
 
 ## 3.2 Your 5-minute verification (real voice)
 
@@ -26,16 +27,33 @@
 If your accent or vocabulary trips the recognizer, add names/terms to
 `[dictionary]` in `data/config.toml`.
 
+### Extras (v0.2)
+
+7. **Smart spacing:** in Notepad type "I think" (no space), hold Ctrl+Win, say
+   *"we should ship it on Friday"* → `I think we should ship it on Friday.`
+   Put the cursor between two words and dictate a word: no capital, single spaces.
+8. **Speak-to-edit:** select a sentence, hold **Ctrl+Win+Alt**, say *"make it more
+   formal"* (or *"shorter"*, *"fix the grammar"*, *"translate to Hindi"*), release.
+   Ctrl+Z restores the original.
+9. **Multilingual:** `keynone setup --with nemotron3.5-multi-560ms-int8`, set
+   `[asr] language = "auto"` (or `"hi"`), dictate in your language. Optional:
+   `[cleanup] translate_to = "English"`.
+10. **GPU:** `keynone setup --with llama.cpp-b11398-vulkan-x64`, set
+    `[llm] gpu = "auto"`, run `keynone doctor` (it should show the GTX 1650), then
+    compare speak-to-edit speed.
+
 ## 3.3 Roadmap (towards full Typeless parity)
 
 | Priority | Feature | Approach |
 |---|---|---|
-| P1 | Context-aware insertion | UI Automation: password detection in browsers, mid-sentence casing/spacing from text before the caret |
-| P1 | "Speak to edit" selected text | Second chord: read selection (UIA/clipboard), dictate an instruction, rewrite with Qwen3.5 2B, replace |
+| ✅ | Context-aware insertion | Done in v0.2 (UI Automation) |
+| ✅ | "Speak to edit" selected text | Done in v0.2 |
+| ✅ | Multilingual + translation | Done in v0.2 (Nemotron 3.5 ASR, language-aware cleanup) |
+| ✅ | GPU acceleration (optional) | Done in v0.2 for the LLM (Vulkan); ASR stays on CPU (already 3× real time) |
 | P1 | Faster cold start | Moonshine v2 "bridge" for live text while Nemotron loads, or adaptive warm period |
-| P2 | Multilingual + translation | NVIDIA Nemotron 3.5 ASR Streaming 0.6B (40 locales, sherpa-onnx exports available) + LLM translation |
-| P2 | GPU acceleration (optional) | llama.cpp Vulkan build for the GTX 1650 / Radeon iGPU; CUDA EP for ASR |
+| P1 | Multilingual eval set | Held-out dictations per language (like the English 34-case set) to tune the multilingual prompt and cues |
 | P2 | Per-app tone | Style hints in the LLM prompt per app profile (email formal, chat casual), with guardrails |
+| P2 | "Ask" mode | Dictate a request with nothing selected and get generated text (needs a stronger model or GPU) |
 | P3 | Personal style learning | Learn dictionary entries from user edits; LoRA-fine-tune a ≤1B model on synthetic disfluent→clean pairs to replace prompting |
 | P3 | Settings UI & installer | Small settings window; signed MSIX/Inno installer; update check |
 | P3 | Snippets & stats | Voice shortcuts ("insert my address"), words/WPM/time-saved dashboard |
@@ -48,7 +66,8 @@ If your accent or vocabulary trips the recognizer, add names/terms to
 | Quality eval | 34 held-out dictations through rules + LLM + guard | `keynone bench cleanup` |
 | Speed | ASR RTF / worst chunk / load time | `keynone bench asr` |
 | Integration | Real engine process driven over IPC (headless, dry run) | `tests/test_engine_ipc.py` (needs models) |
-| Desktop (opt-in) | Paste/type into own text box + clipboard restore; mic capture; listener session | `KEYNONE_DESKTOP_TESTS=1` |
+| Desktop (opt-in) | Paste/type into own text box + clipboard restore; mic capture; listener session; smart spacing; speak-to-edit with the real LLM | `KEYNONE_DESKTOP_TESTS=1` |
+| Multilingual | Language detection, per-language rules/cues, strict guard, translation routing; sample recordings via `transcribe --language auto` | `tests/test_language.py`, `tests/test_multilingual.py` |
 | End-to-end | Synthesized speech, real-time playback, live-lag + latency metrics | `scripts/make_test_audio.py` + `keynone transcribe --realtime` |
 
 Rule for changes: every bug found end-to-end gets a regression test
@@ -65,4 +84,7 @@ Rule for changes: every bug found end-to-end gets a regression test
 | Hotkey conflicts | Unintended dictation | Exact-chord matching, foreign-key cancel, configurable chord, pause in tray |
 | Admin windows (UIPI) | Can't type | Detected → clipboard fallback with message |
 | Antivirus flags hook + SendInput | App blocked | Open source, no network, documented behavior; code signing on the roadmap |
-| Model licenses | Commercial use limits | LFM2.5 (LFM Open License, free < $10M revenue); Apache-2.0 Qwen3.5 alternative; NVIDIA Open Model License for ASR |
+| Model licenses | Commercial use limits | LFM2.5 (LFM Open License, free < $10M revenue); Apache-2.0 Qwen3.5 alternative; NVIDIA Open Model License / OpenMDW-1.1 for ASR |
+| Small LLM changes non-English meaning | Wrong text in other languages | LLM only on correction/filler cues outside English; strict guard (no invented words, no new questions) |
+| Speak-to-edit grabs the wrong text | Unwanted replacement | UIA-confirmed selection first; clipboard copy only outside code editors; guard; single undoable paste |
+| GPU driver problems | LLM unavailable | Opt-in; automatic CPU fallback with a tray warning |

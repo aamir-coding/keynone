@@ -70,6 +70,19 @@ text (see roadmap).
 * **FR-32** Tray menu: copy last dictation, open settings, open data folder, pause/resume hotkey, quit.
 * **FR-33** CLI: `setup`, `listen [--dry-run]`, `stop`, `doctor`, `devices`, `history`, `transcribe`, `bench`, `autostart`.
 
+### Extras (FR-34…FR-44, v0.2)
+* **FR-34 Speak-to-edit:** with text selected in any app, holding the edit chord (default `Ctrl+Win+Alt`) records a spoken instruction; on release the selection is rewritten by the local LLM and replaced (one paste, undoable). Adding the extra key while holding the dictation chord switches the running session to edit mode.
+* **FR-35** The selection is read through UI Automation; if the app has no text support, by copying (`copy_keys`, `Ctrl+Insert` in terminals) with the clipboard restored. Code editors require a UIA-confirmed selection (their copy grabs the whole line when nothing is selected).
+* **FR-36** Rewrites are guarded: preambles/quotes stripped, refusals and prompt leaks rejected, the selection's outer whitespace preserved; the selection length is limited by the LLM context.
+* **FR-37 Smart spacing:** before inserting, the text around the caret is read (UI Automation); casing (lowercase common words mid-sentence; never "I", names, acronyms), separating space, list on its own line, no doubled punctuation, no period when the sentence continues after the cursor. Unsupported apps fall back to v1 behaviour.
+* **FR-38** Password fields are detected through UI Automation (browsers included) and never receive text.
+* **FR-39 Multilingual:** `asr.language` = `en` (English model), `auto` or a locale code (multilingual model, 40 locales).
+* **FR-40** Cleanup rules are applied per sentence language: English-only rules (times, lists, corrections resolver, question marks, "i"→"I") only for English; language-specific fillers and voice commands for es/fr/de/it/pt/nl.
+* **FR-41** Non-English sentences use the LLM only when they contain a correction/filler cue (or `llm_mode = "always"`), behind a strict guard (no invented words, no statement turned into a question).
+* **FR-42 Translation:** `cleanup.translate_to` writes every dictation in the target language (sentences already in it are only cleaned).
+* **FR-43 GPU:** `llm.gpu` = `off` / `auto` / device name runs the LLM on a GPU through the Vulkan llama.cpp build; `auto` prefers a discrete GPU; failure falls back to the CPU automatically.
+* **FR-44** `keynone doctor` reports GPUs, the GPU choice, the speech model for the language and UI Automation availability.
+
 ## 2.4 Non-functional requirements
 
 | ID | Requirement | Target | Measured (Ryzen 5 5600H) |
@@ -85,7 +98,10 @@ text (see roadmap).
 | NFR-9 | Contained install | all files under the project folder | portable layout (`KEYNONE_HOME`) |
 | NFR-10 | Integrity | verify every download | pinned SHA-256 per file |
 | NFR-11 | Robustness | a crash never orphans processes | kill-on-close job objects |
-| NFR-12 | Quality gates | tests, lint, types | 160+ unit tests, ruff, mypy clean |
+| NFR-12 | Quality gates | tests, lint, types | 250+ tests, ruff, mypy clean |
+| NFR-13 | English unchanged by the extras | identical output to v1 | identical on all 6 test recordings; eval 34/34 |
+| NFR-14 | Smart-spacing cost at insertion | ≤ 50 ms | ~7 ms per UIA query (after background warm-up) |
+| NFR-15 | Speak-to-edit, 80-word paragraph | ≤ 5 s CPU, ≤ 1.5 s GPU | 2.9–3.5 s CPU, 0.5–0.7 s GPU |
 
 ## 2.5 Architecture
 
@@ -151,3 +167,7 @@ The only optional exception is `keynone autostart enable` (Startup shortcut).
 | AC-5 | Engine started on demand, exits after the warm period | `tests/test_desktop_listener.py` | ✅ |
 | AC-6 | Unit tests, lint, type check pass | `pytest`, `ruff`, `mypy` | ✅ |
 | AC-7 | Real-voice check by the user (accent, microphone) | manual checklist in the plan | ⏳ |
+| AC-8 | Smart spacing in a real text box | `tests/test_desktop_extras.py` | ✅ |
+| AC-9 | Speak-to-edit rewrites a real selection with the local LLM | `tests/test_desktop_extras.py` | ✅ |
+| AC-10 | Multilingual transcription + cleanup + translation | `keynone transcribe --language auto [--translate-to English]` on sample recordings | ✅ |
+| AC-11 | GPU acceleration with CPU fallback | `keynone bench cleanup --gpu auto`, unit test for fallback | ✅ |
