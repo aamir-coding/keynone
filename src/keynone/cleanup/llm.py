@@ -385,6 +385,13 @@ class LlmPolisher:
                 self._use_slot_restore = True
             return result
 
+    def warm_up_generation(self) -> None:
+        """One tiny generation on the rewrite slot (GPU kernels compile on first use);
+        the cached cleanup prefix in slot 0 is left untouched."""
+        with self._lock, contextlib.suppress(LlmError):
+            self.server.complete(rewrite_prompt(self.builder.family, "fix typos", "helo"),
+                                 max_tokens=4, stop=REWRITE_STOP, slot=REWRITE_SLOT)
+
     def rewrite(
         self,
         instruction: str,

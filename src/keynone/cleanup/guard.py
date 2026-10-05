@@ -56,8 +56,14 @@ def strip_wrappers(text: str) -> str:
     return text
 
 
-def validate(source: str, candidate: str, *, has_correction: bool) -> GuardResult:
-    """Accept ``candidate`` only if it looks like a faithful cleanup of ``source``."""
+def validate(source: str, candidate: str, *, has_correction: bool,
+             strict: bool = False) -> GuardResult:
+    """Accept ``candidate`` only if it looks like a faithful cleanup of ``source``.
+
+    ``strict`` (used outside English, where small models are less reliable):
+    no invented words (one if the speaker corrected themselves) and no
+    statement turned into a question.
+    """
     text = strip_wrappers(candidate)
     src_words, out_words = _words(source), _words(text)
     if not out_words:
@@ -86,11 +92,14 @@ def validate(source: str, candidate: str, *, has_correction: bool) -> GuardResul
         and not (src_has_numbers and (_NUMERIC_RE.match(w) or w in _NUMBER_WORDS))
         and not any(w.startswith(s) or s.startswith(w) for s in src_set if len(s) > 3)
     ]
-    if len(novel) > max(2, int(0.15 * n_out)):
+    allowed_novel = (1 if has_correction else 0) if strict else max(2, int(0.15 * n_out))
+    if len(novel) > allowed_novel:
         return GuardResult(False, text, f"novel words: {' '.join(novel[:6])}")
 
     if "?" in source and "?" not in text and not has_correction:
         return GuardResult(False, text, "question mark lost (answered instead of cleaned?)")
+    if strict and "?" in text and "?" not in source:
+        return GuardResult(False, text, "statement turned into a question")
     return GuardResult(True, text)
 
 

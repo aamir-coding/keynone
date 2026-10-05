@@ -381,7 +381,9 @@ class Session:
             return self._edit_message(
                 "no_selection", f"Select some text first, then hold {chord} and say what to "
                 "change", base)
-        limit = self.config.edit.max_selection_chars
+        # The selection and its rewrite must both fit in one LLM slot (~3.5 chars/token).
+        context_limit = int((self.config.llm.context - 256) / 2 * 3.5)
+        limit = min(self.config.edit.max_selection_chars, context_limit)
         if len(selection) > limit:
             return self._edit_message("error", f"Selection too long ({len(selection)} > "
                                       f"{limit} characters)", base)

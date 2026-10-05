@@ -88,7 +88,11 @@ class Recognizer:
     def stream(self, language: str = "auto") -> Stream:
         """New dictation stream; ``language`` ("auto", "hi", "es-ES" ...) applies to
         multilingual models only."""
-        stream = Stream(self._rec, self.lock)
+        # The lead-in recovers first words on the multilingual model; on the English
+        # model it only shifts chunk boundaries (measured: slightly worse), so v1
+        # behaviour is kept there.
+        stream = Stream(self._rec, self.lock,
+                        lead_in_seconds=Stream.LEAD_IN_SECONDS if self.multilingual else 0.0)
         if self.multilingual:
             stream.set_language(language)
         return stream
@@ -99,18 +103,20 @@ class Stream:
 
     # Silence appended at the end so the last chunk (incl. look-ahead) is decoded.
     TAIL_PADDING_SECONDS = 0.6
-    # Silence fed before the first audio: without it the first word can be lost
-    # when speech starts right at the key press (measured on the multilingual model).
+    # Silence fed before the first audio of multilingual streams: without it the
+    # first word can be lost when speech starts right at the key press.
     LEAD_IN_SECONDS = 0.3
 
-    def __init__(self, recognizer: Any, lock: threading.Lock | None = None) -> None:
+    def __init__(self, recognizer: Any, lock: threading.Lock | None = None, *,
+                 lead_in_seconds: float = 0.0) -> None:
         self._rec = recognizer
         self._lock = lock or threading.Lock()
         self._stream = recognizer.create_stream()
         self._text = ""
         self._in_endpoint = False
         self.samples = 0
-        self._lead_in_pending = True
+        self._lead_in = lead_in_seconds
+        self._lead_in_pending = lead_in_seconds > 0
         # Audio time (s) at which the newest recognized token was spoken; with
         # live audio, "now - stream start - last_token_time" is the display lag.
         self.last_token_time = 0.0
@@ -136,7 +142,7 @@ class Stream:
         self.samples += samples.size
         if self._lead_in_pending:  # after set_language(): options apply from the start
             self._lead_in_pending = False
-            lead_in = np.zeros(int(self.LEAD_IN_SECONDS * SAMPLE_RATE), dtype=np.float32)
+            lead_in = np.zeros(int(self._lead_in * SAMPLE_RATE), dtype=np.float32)
             self._stream.accept_waveform(SAMPLE_RATE, lead_in)
         self._stream.accept_waveform(SAMPLE_RATE, samples)
         changed = self._decode()
@@ -155,7 +161,7 @@ class Stream:
         text = str(result.text).strip()
         timestamps = list(result.timestamps)
         if timestamps:
-            self.last_token_time = max(0.0, float(timestamps[-1]) - self.LEAD_IN_SECONDS)
+            self.last_token_time = max(0.0, float(timestamps[-1]) - self._lead_in)
         if text != self._text:
             self._text = text
             return True

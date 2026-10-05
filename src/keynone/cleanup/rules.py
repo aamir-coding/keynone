@@ -501,8 +501,50 @@ _SOFT_FILLER_RE = re.compile(
 )
 
 
-def has_correction_cue(text: str) -> bool:
-    return bool(_CORRECTION_RE.search(text))
+# Other languages: phrases that signal a self-correction, and comma-delimited
+# filler words. They only decide whether the LLM looks at a sentence; plain
+# sentences keep the recognizer's text.
+_CORRECTION_CUES_BY_LANGUAGE: dict[str, str] = {
+    "es": r"no,?\s+(?:mejor|espera|perdón)|quiero decir|mejor dicho|perdón|digo",
+    "fr": r"non,?\s+(?:attends|pardon)|je veux dire|ou plutôt|pardon|je me corrige",
+    "de": r"nein,?\s+(?:warte|sorry)|ich meine|besser gesagt|beziehungsweise|korrektur",
+    "it": r"no,?\s+(?:aspetta|scusa)|volevo dire|cioè|anzi",
+    "pt": r"não,?\s+(?:espera|desculpa)|quer dizer|ou melhor|aliás",
+    "nl": r"nee,?\s+(?:wacht|sorry)|ik bedoel|beter gezegd|of liever",
+    "hi": r"मतलब|नहीं नहीं|नहीं,|सॉरी|यानी",
+}
+_SOFT_FILLERS_BY_LANGUAGE: dict[str, str] = {
+    "es": r"o sea|este|pues|bueno|tipo|en plan",
+    "fr": r"genre|du coup|en fait|bah|ben|tu vois",
+    "de": r"also|halt|quasi|sozusagen|irgendwie|weißt du",
+    "it": r"tipo|praticamente|diciamo|insomma",
+    "pt": r"tipo|né|sabe",
+    "nl": r"zeg maar|eigenlijk|weet je",
+    "hi": r"वो|यार",
+}
+_LANGUAGE_CUE_RES: dict[tuple[str, str], re.Pattern[str]] = {}
+
+
+def _language_cue_re(kind: str, language: str) -> re.Pattern[str] | None:
+    key = (kind, language)
+    if key not in _LANGUAGE_CUE_RES:
+        table = _CORRECTION_CUES_BY_LANGUAGE if kind == "correction" else _SOFT_FILLERS_BY_LANGUAGE
+        words = table.get(language)
+        if words is None:
+            return None
+        if kind == "correction":
+            pattern = rf"(?i)(?<![\w'])(?:{words})(?![\w'])"
+        else:  # only comma-delimited, like the English soft fillers
+            pattern = rf"(?i)(?:^|[,.!?]\s*)(?:{words})\s*,|,\s*(?:{words})\s*[,.?]"
+        _LANGUAGE_CUE_RES[key] = re.compile(pattern)
+    return _LANGUAGE_CUE_RES[key]
+
+
+def has_correction_cue(text: str, language: str = "en") -> bool:
+    if language == "en":
+        return bool(_CORRECTION_RE.search(text))
+    pattern = _language_cue_re("correction", language)
+    return bool(pattern and pattern.search(text))
 
 
 def starts_with_correction_cue(text: str) -> bool:
@@ -510,8 +552,11 @@ def starts_with_correction_cue(text: str) -> bool:
     return m is not None and m.start() <= 2
 
 
-def has_soft_fillers(text: str) -> bool:
-    return bool(_SOFT_FILLER_RE.search(text))
+def has_soft_fillers(text: str, language: str = "en") -> bool:
+    if language == "en":
+        return bool(_SOFT_FILLER_RE.search(text))
+    pattern = _language_cue_re("filler", language)
+    return bool(pattern and pattern.search(text))
 
 
 def has_list_cue(text: str) -> bool:

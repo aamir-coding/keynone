@@ -138,6 +138,8 @@ class EngineModels:
             for variant, target in self._prompt_variants():
                 polisher.prime(variant, target)
             polisher.prime("en")  # the most frequent prefix stays loaded
+            if polisher.server.gpu_device:
+                polisher.warm_up_generation()  # compile GPU decode kernels now, not mid-dictation
             self.polisher = polisher
             log.info("LLM ready in %.2fs (%s)", time.perf_counter() - started,
                      polisher.server.gpu_device or "CPU")

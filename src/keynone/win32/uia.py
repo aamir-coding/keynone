@@ -114,6 +114,10 @@ class UiaClient:
         """Start the UIA thread now (first use generates COM wrappers, ~1 s)."""
         self._ensure_thread()
 
+    def check(self, timeout: float = 10.0) -> bool:
+        """True once UI Automation is initialized (reads no application content)."""
+        return bool(self._call(lambda: True, timeout))
+
     def close(self) -> None:
         if self._thread is not None:
             self._requests.put(None)

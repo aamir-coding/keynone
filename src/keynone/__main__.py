@@ -150,8 +150,9 @@ def _cmd_transcribe(args: argparse.Namespace) -> int:
             "engine": "cold" if number == 1 else "warm",
             "status": result.status,
             "audio_seconds": round(result.audio_seconds, 2),
+            # Only meaningful when audio arrives at real-time speed, like a microphone.
             "live_lag_ms": {"p50": result.live_lag_p50_ms, "p95": result.live_lag_p95_ms,
-                            "max": result.live_lag_max_ms},
+                            "max": result.live_lag_max_ms} if args.realtime else None,
             "stop_to_text_ms": result.latency_ms,
             "llm_calls": result.llm_calls,
         }))
@@ -209,10 +210,34 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
     except (ConfigError, ValueError) as exc:
         check("config", False, str(exc))
         return 1
-    for asset_id in (config.asr.model, config.llm.model, LLAMA_RUNTIME_ID):
+    from keynone.asr import effective_model
+    from keynone.cleanup.llm import LLAMA_VULKAN_RUNTIME_ID, list_gpu_devices, resolve_gpu_device
+    from keynone.win32.uia import UiaClient
+
+    asr_model = effective_model(config.asr.model, config.asr.language)
+    print(f"speech language: {config.asr.language} (model {asr_model})")
+    for asset_id in (asr_model, config.llm.model, LLAMA_RUNTIME_ID):
         check(f"asset {asset_id}", get_asset(asset_id).is_installed(paths))
     devices = input_devices()
     check("microphones", bool(devices), ", ".join(devices) or "none found")
+    vulkan = get_asset(LLAMA_VULKAN_RUNTIME_ID)
+    if vulkan.is_installed(paths):
+        from keynone.assets import find_file
+
+        gpus = list_gpu_devices(find_file(vulkan.directory(paths), "llama-server.exe"))
+        print("GPUs: " + (", ".join(f"{g.name} {g.description} ({g.memory_mb} MiB)"
+                                    for g in gpus) or "none"))
+    if config.llm.gpu.lower() not in ("", "off", "none", "cpu"):
+        selected = resolve_gpu_device(config.llm.gpu, paths)
+        check(f"LLM GPU ({config.llm.gpu})", selected is not None,
+              f"{selected[1].description}" if selected else
+              f"not available - run: keynone setup --with {LLAMA_VULKAN_RUNTIME_ID}")
+    else:
+        print("LLM GPU: off (set llm.gpu = \"auto\" to use one)")
+    if config.insert.smart_spacing or config.hotkeys.edit:
+        uia = UiaClient()
+        check("UI Automation (smart spacing, speak-to-edit)", uia.check())
+        uia.close()
     check("not running as admin", not is_elevated(),
           "admin windows still need Keynone started as admin" if is_elevated() else "")
     print("all good" if ok else "problems found (see above)")

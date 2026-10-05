@@ -149,8 +149,13 @@ class CleanupPipeline:
         target = self._translation_target()
         if target is not None and target[0] != language:
             return True
-        if language != "en":  # rules are English-only: the LLM does the rest
-            return True
+        if language != "en":
+            if self.settings.llm_mode == "always":
+                return True
+            # Only sentences with a correction/filler cue: small models are less
+            # reliable outside English, so plain sentences keep the ASR text.
+            return (rules.has_correction_cue(text, language)
+                    or rules.has_soft_fillers(text, language))
         correction = rules.has_correction_cue(text)
         if self.settings.llm_mode == "always":
             # Deterministic list formatting beats letting the LLM restyle a list.
@@ -298,7 +303,8 @@ class CleanupPipeline:
             verdict = guard.validate_translation(cleaned, result.text)
         else:
             verdict = guard.validate(cleaned, result.text,
-                                     has_correction=rules.has_correction_cue(cleaned))
+                                     has_correction=rules.has_correction_cue(cleaned, language),
+                                     strict=language != "en")
         if not verdict.ok:
             log.info("LLM output rejected: %s", verdict.reason)
             self._result.rejections.append(verdict.reason)
