@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 
-from keynone.cleanup.language import detect_language
+from keynone.cleanup.language import detect_language, function_words
 from keynone.config import Style
 
 _NUMBERED_RE = re.compile(r"^(\s*)(\d+)[.)]\s+(.*)$")
@@ -90,6 +90,97 @@ def join_units(units: Iterable[str]) -> str:
         else:
             out += _separator(out, unit) + unit
     return out
+
+
+_OPENERS = "([{\"'“‘«¿¡/"
+_CLOSERS = ".,;:!?)]}\"'”’»…"
+_SENTENCE_ENDS = ".!?…。！？।"
+_KEEP_CASE = frozenset({"i", "i'm", "i'll", "i've", "i'd", "i’m", "i’ll", "i’ve", "i’d"})
+_LOWERCASE_STARTERS = function_words("en") | frozenset(
+    """also maybe please thanks thank then everyone everybody anyone anybody someone somebody
+    all both each every let's it's that's there's what's here's we're they're you're we'll
+    they'll you'll it'll yes no okay ok sure now today tomorrow yesterday tonight because since
+    unless although though however otherwise instead still even only never always sometimes
+    usually perhaps probably actually basically just one two three which who whose when where
+    why how if as than like some any most more less""".split()
+)
+
+
+def _first_word(text: str) -> str:
+    match = re.match(r"\s*([^\s]+)", text)
+    return match.group(1).strip(",.;:!?\"'()") if match else ""
+
+
+def _lower_first_if_safe(text: str) -> str:
+    word = _first_word(text)
+    if (not word or word.lower() in _KEEP_CASE or any(c.isupper() for c in word[1:])
+            or word.lower() not in _LOWERCASE_STARTERS):
+        return text  # names, "I", acronyms, iPhone-style words keep their case
+    index = text.find(word[0])
+    return text[:index] + text[index].lower() + text[index + 1 :]
+
+
+def _upper_first(text: str) -> str:
+    for index, char in enumerate(text):
+        if char.isalpha():
+            return text[:index] + char.upper() + text[index + 1 :]
+        if not char.isspace() and char not in _OPENERS:
+            break
+    return text
+
+
+def adapt_to_context(text: str, before: str, after: str, *, style: Style,
+                     trailing_space: bool) -> str:
+    """Fit inserted text to the characters around the cursor (smart spacing).
+
+    ``before``/``after`` are the texts just before/after the caret, read via UI
+    Automation. Handles: casing mid-sentence vs. at a sentence start, a space
+    between words, lists starting on their own line, no doubled punctuation,
+    and dropping the period when the sentence continues after the cursor.
+    """
+    body = text.strip(" ")
+    if not body.strip():
+        return text
+    line_before = before.rsplit("\n", 1)[-1]
+    at_line_start = not line_before.strip()
+    # Last meaningful character, looking through opening brackets/quotes: "(" after
+    # "a jacket" is mid-sentence, while "(" after "Done." starts a sentence.
+    last = line_before.rstrip(" \t" + _OPENERS)[-1:]
+    if not last and line_before.strip():
+        last = "."  # only brackets/quotes on the line: treat as a sentence start
+    multi_line = "\n" in body.strip("\n") or is_list_line(body)
+    cjk_join = bool(_CJK_RE.match(body[0])) and (not before or bool(_CJK_RE.match(before[-1]))
+                                                  or before[-1] in "。！？，、")
+    if multi_line:
+        body = body.strip("\n")
+        leading = "" if at_line_start else "\n"
+    elif (not before or before[-1].isspace() or before[-1] in _OPENERS or cjk_join
+          or body[0] in ",.;:!?)]}…"):
+        leading = ""
+    else:
+        leading = " "
+    if not multi_line and style != "code":
+        if at_line_start or last in _SENTENCE_ENDS:
+            body = _upper_first(body)
+        elif last.isalnum() or last in ",;:-–—":
+            body = _lower_first_if_safe(body)
+    following = after[:1]
+    next_visible = after.lstrip(" \t")[:1]
+    if multi_line or following in ("", "\n"):
+        trailing = " " if (trailing_space and not multi_line and not _CJK_RE.match(body[-1])
+                           and body[-1] not in "。！？") else ""
+    elif following.isspace():
+        trailing = ""
+    elif following in _CLOSERS:
+        body = body.rstrip(".!?…")  # the existing punctuation follows
+        trailing = ""
+    else:
+        trailing = "" if _CJK_RE.match(following) else " "
+    single_sentence = not re.search(r"[.!?…]\s", body.rstrip(".!?…"))
+    if (not multi_line and single_sentence and next_visible
+            and (next_visible.islower() or next_visible.isdigit())):
+        body = body.rstrip(".")  # the sentence continues after the cursor
+    return leading + body + trailing
 
 
 def finalize(
