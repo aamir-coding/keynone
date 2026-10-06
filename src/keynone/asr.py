@@ -17,6 +17,7 @@ from typing import Any
 import numpy as np
 
 from keynone.assets import get_asset
+from keynone.editions import MULTILINGUAL_MODEL
 from keynone.paths import Paths
 
 log = logging.getLogger(__name__)
@@ -24,7 +25,6 @@ log = logging.getLogger(__name__)
 SAMPLE_RATE = 16_000
 BYTES_PER_SECOND = SAMPLE_RATE * 2  # mono PCM16
 
-MULTILINGUAL_MODEL = "nemotron3.5-multi-560ms-int8"
 MULTILINGUAL_MODELS = frozenset({MULTILINGUAL_MODEL})
 
 

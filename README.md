@@ -48,6 +48,7 @@ Then double-click **`Keynone.cmd`**. A microphone icon appears in the tray.
 * **Select text, hold Ctrl+Win+Alt** and say how to change it → release; the
   selection is replaced (Ctrl+Z undoes it in most apps).
 * **Esc** → cancel.
+* Settings: tray icon → *Settings...*, or `Keynone-settings.cmd`.
 * Stop: tray icon → *Quit Keynone*, or `Keynone-stop.cmd`.
 
 The first dictation after Keynone has been idle takes ~5 s before live text
@@ -63,8 +64,17 @@ every dictation.
 
 ## Settings
 
-Edit `data/config.toml` (created on first run; tray → *Open settings*).
-Changes apply at the next dictation.
+**The settings window:** tray icon → *Settings...*, double-click
+`Keynone-settings.cmd`, or run `keynone settings`. It has every option, in plain
+words, with the rarely needed ones behind *Show advanced settings*. It follows
+the Windows light/dark mode.
+
+![The settings window](docs/images/settings.png)
+
+**Or the file:** all settings live in `data/config.toml` (created on first run;
+tray → *Edit config.toml*). The window edits that same file in place, so your
+comments and notes in it survive. Either way, a running Keynone applies saved
+changes within a second, never in the middle of a dictation.
 
 ```toml
 [hotkeys]
@@ -131,6 +141,7 @@ back to the CPU automatically. `keynone doctor` lists the GPUs it can see.
 | `keynone setup [--list] [--with ID] [--remove ID]` | Download/verify models |
 | `keynone listen [--dry-run]` | Run the listener (`--dry-run`: show, never type) |
 | `keynone stop` | Stop the listener |
+| `keynone settings` | Open the settings window (it edits `data/config.toml`) |
 | `keynone doctor` | Check installation, models, microphone |
 | `keynone devices` | List microphones |
 | `keynone history [-n 20]` | Recent dictations |
@@ -177,6 +188,7 @@ Docs: [feasibility & model selection](docs/01-feasibility-and-model-selection.md
 ```
 src/keynone/
   listener/   hotkey state machine, engine process manager, tray app
+  settings/   settings window (Tk): option list, config.toml editing, theme, controls
   engine/     session, overlay, insertion, history, model loading
   cleanup/    rules, correction resolver, segmenter, pipeline, LLM, guard, prompts
   cleanup/language.py  per-sentence language detection

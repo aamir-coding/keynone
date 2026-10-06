@@ -1,16 +1,17 @@
 # 2. Keynone — Software Specification
 
-Version 0.1 · Windows 11 x64 · English
+Version 0.2 · Windows 10/11 x64
 
 ## 2.1 Purpose and scope
 
 Keynone is a local, private voice-dictation utility in the spirit of Typeless:
 the user holds a hotkey, speaks naturally, and polished text appears in
 whichever application has the text cursor. All speech recognition and text
-processing run on the local CPU with open-weight models; no network access is
-needed after the one-time model download. Out of scope for v0.1: mobile
-platforms, cloud sync, non-English languages, voice-driven editing of selected
-text (see roadmap).
+processing run on the local CPU (optionally the GPU) with open-weight models;
+no network access is needed after the one-time model download. v0.1 was English
+dictation; v0.2 adds the extras (FR-34…FR-44), the settings window (FR-45…FR-50)
+and two editions, with and without the language pack (FR-51…FR-54). Out of
+scope: mobile platforms, cloud sync.
 
 ## 2.2 Definitions
 
@@ -67,9 +68,9 @@ text (see roadmap).
 ### Personalization, history, settings (FR-29…FR-33)
 * **FR-29** Personal dictionary: preferred spellings + phrase replacements, also given to the LLM.
 * **FR-30** Local history (SQLite) of raw and final text, app, duration, latency; retention days; can be disabled. Window titles are not stored.
-* **FR-31** Settings in a commented TOML file, validated with precise error messages, hot-reloaded at the next dictation.
-* **FR-32** Tray menu: copy last dictation, open settings, open data folder, pause/resume hotkey, quit.
-* **FR-33** CLI: `setup`, `listen [--dry-run]`, `stop`, `doctor`, `devices`, `history`, `transcribe`, `bench`, `autostart`.
+* **FR-31** Settings in a commented TOML file, validated with precise error messages. A running listener applies saved changes within about a second (it compares the file's timestamp once a second while idle, and reacts at once to a message from the settings window), never during a dictation: a new hotkey works without a dictation first. A loaded engine restarts only if a setting it uses changed. A file with an error keeps the last good settings and shows a tray warning.
+* **FR-32** Tray menu: copy last dictation, settings window, edit config.toml, open data folder, pause/resume hotkey, quit.
+* **FR-33** CLI: `setup`, `listen [--dry-run]`, `stop`, `settings`, `doctor`, `devices`, `history`, `transcribe`, `bench`, `autostart`.
 
 ### Extras (FR-34…FR-44, v0.2)
 * **FR-34 Speak-to-edit:** with text selected in any app, holding the edit chord (default `Ctrl+Win+Alt`) records a spoken instruction; on release the selection is rewritten by the local LLM and replaced (one paste, undoable). Adding the extra key while holding the dictation chord switches the running session to edit mode.
@@ -83,6 +84,14 @@ text (see roadmap).
 * **FR-42 Translation:** `cleanup.translate_to` writes every dictation in the target language (sentences already in it are only cleaned).
 * **FR-43 GPU:** `llm.gpu` = `off` / `auto` / device name runs the LLM on a GPU through the Vulkan llama.cpp build; `auto` prefers a discrete GPU; failure falls back to the CPU automatically.
 * **FR-44** `keynone doctor` reports GPUs, the GPU choice, the speech model for the language and UI Automation availability.
+
+### Settings window (FR-45…FR-50, v0.2)
+* **FR-45** A settings window (`keynone settings`, *Settings...* in the tray menu, `Keynone-settings.cmd`) covers every option of `config.toml`, in plain language with a short explanation each, on seven pages (General, Microphone & speech, Cleanup, Typing into apps, Dictionary, App profiles, Display & privacy) plus About. Options few people need are behind *Show advanced settings*. One window at a time; opening it again brings it to the front.
+* **FR-46** `config.toml` stays the single source of truth. The window edits the file in place - comments, order, inline notes and keys it doesn't know are kept - writes only the values that changed, validates the result with the same parser the app uses, and replaces the file atomically. Changes made in a text editor while the window is open are reloaded (or, with unsaved changes in the window, merged when saving). A file with an error is shown with the message; the window reloads it once fixed, or restores the defaults (keeping `config.toml.bak`).
+* **FR-47** Input that can't be used is marked on the field with the reason - out of range, unknown key names, the dictation and edit shortcuts being equal, a shortcut that would block typing (a letter, or a lone Ctrl/Shift/Alt/Win) - and Save stays disabled until it is fixed. Changes apply on Save (`Ctrl+S`); Revert discards them; closing with unsaved changes asks.
+* **FR-48** Shortcuts can be typed or recorded by pressing them. While recording, a running listener ignores its hotkeys (at most 60 s; resumed automatically), and Win/Alt releases are masked.
+* **FR-49** What isn't a setting is shown rather than hidden: a model that isn't downloaded, the GPU runtime or the language pack come with a button that runs the same `keynone setup ...` command in a terminal window; language settings are disabled without the language pack; the About page shows version, edition, folders, installed models with sizes, runs `keynone doctor` and restores defaults. *Start Keynone when I sign in* manages the Startup shortcut.
+* **FR-50** Light and dark palettes follow the Windows app theme (title bar included); Segoe UI; drawn for the screen's scaling (100-200 %); usable from the keyboard (Tab between controls with a visible focus, Space to switch, `Ctrl+Tab` between pages).
 
 ## 2.4 Non-functional requirements
 
@@ -99,7 +108,7 @@ text (see roadmap).
 | NFR-9 | Contained install | all files under the project folder | portable layout (`KEYNONE_HOME`) |
 | NFR-10 | Integrity | verify every download | pinned SHA-256 per file |
 | NFR-11 | Robustness | a crash never orphans processes | kill-on-close job objects |
-| NFR-12 | Quality gates | tests, lint, types | 640+ tests (incl. the 343-case stress set), ruff, mypy clean |
+| NFR-12 | Quality gates | tests, lint, types | 720+ tests (incl. the 343-case stress set and the settings window), ruff, mypy clean |
 | NFR-13 | English unchanged by the extras | identical output to v1 | identical on all 6 test recordings; eval 34/34 |
 | NFR-14 | Smart-spacing cost at insertion | ≤ 50 ms | ~7 ms per UIA query (after background warm-up) |
 | NFR-15 | Speak-to-edit, typical instruction | ≤ 2 s CPU, ≤ 1 s GPU | median 0.6 s CPU, 0.2 s GPU (cached prompt) |
@@ -127,6 +136,12 @@ text (see roadmap).
 warm) → session → text inserted → engine kept for `keep_warm_seconds`, then
 exits. `0` exits right after each session.
 
+**Settings window:** a separate, short-lived process (Tk). It shares nothing
+with the listener but `data/config.toml`. After saving it posts `WM_APP+2` to
+the listener's hidden tray window ("apply the file now"); while recording a
+shortcut it posts `WM_APP+3` with a number of seconds (hotkeys ignored meanwhile,
+`0` = resume). Neither message carries data.
+
 **Threads (engine):** IPC reader (main), session/ASR worker, cleanup worker,
 overlay UI thread, model loaders. sherpa-onnx and llama.cpp release the GIL.
 
@@ -143,7 +158,7 @@ overlay UI thread, model loaders. sherpa-onnx and llama.cpp release the GIL.
 |---|---|
 | `models/<asset>/` | Speech/LLM models (+ `.complete.json` with verified hashes) |
 | `bin/llama.cpp-*/` | llama-server runtime |
-| `data/config.toml` | User settings (copied from `src/keynone/default_config.toml`) |
+| `data/config.toml` | User settings (copied from `src/keynone/default_config.toml`); `config.toml.bak` after *Restore the default settings* |
 | `data/history.db` | `dictations(id, created_at, app, raw_text, final_text, audio_seconds, latency_ms, llm_calls, method)` |
 | `data/logs/` | Rotating logs; transcripts only if `privacy.log_transcripts = true` |
 | `data/cache/` | LLM prompt-prefix slot files, generated icons and sounds |
@@ -157,6 +172,10 @@ The only optional exception is `keynone autostart enable` (Startup shortcut).
 * Keyboard hook processes keys in memory only; it ignores Keynone's own tagged input.
 * Clipboard content is marked private (excluded from Win+V history and cloud sync).
 * Password fields are skipped; window titles are not stored in history.
+* The listener's window messages from other processes can only ask it to reread
+  `config.toml` or to ignore the hotkeys for at most 60 s (never during a
+  dictation); neither carries data. The settings window writes nothing but
+  `config.toml` (and, when asked, the Startup shortcut).
 
 ## 2.8 Acceptance criteria (v0.1)
 
@@ -174,3 +193,4 @@ The only optional exception is `keynone autostart enable` (Startup shortcut).
 | AC-10 | Multilingual transcription + cleanup + translation | `keynone transcribe --language auto [--translate-to English]` on sample recordings | ✅ |
 | AC-11 | GPU acceleration with CPU fallback | `keynone bench cleanup --gpu auto`, unit test for fallback | ✅ |
 | AC-12 | Adversarial dictation (fillers, repetitions, corrections, commands, lists) | `tests/test_dictation_stress.py`; `scripts/stress_test.py text/audio/edit` | ✅ |
+| AC-13 | The settings window covers every option and edits `config.toml` without losing anything; the listener applies saved changes while idle | `tests/test_settings_*.py`, `tests/test_listener_reload.py` | ✅ |

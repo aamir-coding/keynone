@@ -2,6 +2,7 @@
 
     keynone setup              download + verify the default models (once)
     keynone listen             start the dormant hotkey listener (tray icon)
+    keynone settings           open the settings window (edits data/config.toml)
     keynone transcribe a.wav   run a WAV through the full pipeline (dry run)
     keynone doctor             check the installation
     keynone history            show recent dictations
@@ -61,6 +62,12 @@ def _cmd_listen(args: argparse.Namespace) -> int:
         if args.dry_run:
             print("Dry run: dictations are shown and saved to history but not typed.")
     return run_listener(verbose=args.verbose, dry_run=args.dry_run)
+
+
+def _cmd_settings(args: argparse.Namespace) -> int:
+    from keynone.settings.app import run_settings
+
+    return run_settings()
 
 
 def _cmd_engine(args: argparse.Namespace) -> int:
@@ -315,6 +322,8 @@ def _cmd_bench(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="keynone", description="Local AI voice dictation.")
     parser.add_argument("-v", "--verbose", action="store_true", help="debug logging")
+    # Used by the settings window, which runs commands in a new terminal window.
+    parser.add_argument("--pause-at-end", action="store_true", help=argparse.SUPPRESS)
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("setup", help="download and verify models")
@@ -329,6 +338,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="show and transcribe dictations but never type into apps")
     p.set_defaults(func=_cmd_listen)
     sub.add_parser("stop", help="stop a running listener").set_defaults(func=_cmd_stop)
+    sub.add_parser("settings", help="open the settings window").set_defaults(func=_cmd_settings)
     p = sub.add_parser("autostart", help="start Keynone at Windows sign-in (Startup shortcut)")
     p.add_argument("action", choices=["enable", "disable", "status"])
     p.set_defaults(func=_cmd_autostart)
@@ -373,7 +383,18 @@ def main(argv: list[str] | None = None) -> int:
         from keynone.config import load_config
 
         args.model = load_config().llm.model
-    return int(args.func(args) or 0)
+    if not args.pause_at_end:
+        return int(args.func(args) or 0)
+    import ctypes
+
+    ctypes.windll.kernel32.SetConsoleTitleW(f"Keynone - {args.command}")
+    try:
+        status = int(args.func(args) or 0)
+    except Exception as exc:  # show it: this window was opened for the user to read
+        print(f"\nFailed: {exc}")
+        status = 1
+    input("\nPress Enter to close this window.")
+    return status
 
 
 if __name__ == "__main__":

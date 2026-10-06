@@ -493,6 +493,22 @@ def resolve_gpu_device(preference: str, paths: Paths) -> tuple[Path, GpuDevice] 
                     LLAMA_VULKAN_RUNTIME_ID)
         return None
     exe = find_file(runtime.directory(paths), "llama-server.exe")
+    devices = available_gpu_devices(paths, exe)
+    device = choose_gpu_device(devices, preference)
+    if device is None:
+        log.warning("no GPU matching %r (found: %s); using the CPU", preference,
+                    ", ".join(d.description for d in devices) or "none")
+        return None
+    return exe, device
+
+
+def available_gpu_devices(paths: Paths, exe: Path | None = None) -> list[GpuDevice]:
+    """GPUs the Vulkan runtime can use ([] without it); cached until the runtime changes."""
+    if exe is None:
+        runtime = get_asset(LLAMA_VULKAN_RUNTIME_ID)
+        if not runtime.is_installed(paths):
+            return []
+        exe = find_file(runtime.directory(paths), "llama-server.exe")
     cache = paths.cache / "gpu-devices.json"
     stamp = f"{exe}|{exe.stat().st_mtime_ns}"
     devices: list[GpuDevice] = []
@@ -509,12 +525,7 @@ def resolve_gpu_device(preference: str, paths: Paths) -> tuple[Path, GpuDevice] 
             cache.write_text(json.dumps({"stamp": stamp,
                                          "devices": [vars(d) for d in devices]}),
                              encoding="utf-8")
-    device = choose_gpu_device(devices, preference)
-    if device is None:
-        log.warning("no GPU matching %r (found: %s); using the CPU", preference,
-                    ", ".join(d.description for d in devices) or "none")
-        return None
-    return exe, device
+    return devices
 
 
 def build_polisher(

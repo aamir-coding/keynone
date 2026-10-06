@@ -73,6 +73,17 @@ _MODIFIER_NAMES = frozenset(
 )
 
 
+_ALIASES = frozenset({"escape", "menu", "altgr"})  # second names for the same key
+
+
+def key_name(vk: int) -> str | None:
+    """The hotkey name of one physical key ("a", "f9", "rctrl", "capslock"), or None."""
+    for name, codes in _NAMED.items():
+        if name not in _ALIASES and codes == frozenset({vk}):
+            return name
+    return None
+
+
 class ChordError(ValueError):
     pass
 

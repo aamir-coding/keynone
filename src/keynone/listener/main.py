@@ -8,18 +8,23 @@ down again after the configured warm period.
 
 from __future__ import annotations
 
+import copy
 import ctypes
 import logging
 import os
 import queue
+import subprocess
+import sys
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 from keynone.assets import get_asset
 from keynone.cleanup.llm import LLAMA_RUNTIME_ID
 from keynone.config import Config, ConfigError, config_mtime, load_config
 from keynone.ipc import Msg
+from keynone.listener import control
 from keynone.listener.engine_proc import EngineProcess
 from keynone.listener.hotkeys import Action, HotkeyMachine
 from keynone.logging_setup import setup_logging
@@ -27,7 +32,7 @@ from keynone.paths import Paths, get_paths
 from keynone.sounds import Cues
 from keynone.win32 import api, clipboard
 from keynone.win32.audio import AudioCapture, AudioError
-from keynone.win32.gui import MenuItem, TrayIcon, run_message_loop, write_icon
+from keynone.win32.gui import BRAND_RGB, MenuItem, TrayIcon, run_message_loop, write_icon
 from keynone.win32.hooks import KeyboardHook
 from keynone.win32.keys import Chord, send_menu_mask
 from keynone.win32.process import KillOnCloseJob
@@ -35,7 +40,38 @@ from keynone.win32.process import KillOnCloseJob
 log = logging.getLogger(__name__)
 
 RELEASE_TAIL_SECONDS = 0.2  # keep recording briefly: people release before the last word ends
-_IDLE_COLOR, _REC_COLOR = (59, 64, 87), (229, 72, 77)
+CONFIG_POLL_SECONDS = 1.0  # how often an idle listener looks at config.toml's timestamp
+FINISH_GRACE_SECONDS = 60.0  # a released dictation is surely finished (or stuck) after this
+_REC_COLOR = (229, 72, 77)
+
+# Settings only the listener uses: changing them never restarts a loaded engine.
+_LISTENER_ONLY = {
+    "hotkeys": ("dictate", "cancel", "hold_threshold_ms", "double_tap_ms"),
+    "lifecycle": ("keep_warm_seconds",),
+    "audio": ("cues", "device", "max_session_seconds"),
+}
+
+
+def engine_settings_changed(old: Config, new: Config) -> bool:
+    """Whether a running engine must restart to use ``new`` (it reads the config once)."""
+
+    def engine_part(config: Config) -> Config:
+        part = copy.deepcopy(config)
+        for section, names in _LISTENER_ONLY.items():
+            for name in names:
+                setattr(getattr(part, section), name, None)
+        return part
+
+    return engine_part(old) != engine_part(new)
+
+
+def launch_settings_window(paths: Paths) -> None:
+    """Open the settings window in its own process (it shows itself only once)."""
+    exe = Path(sys.executable)
+    windowed = exe.with_name("pythonw.exe")
+    subprocess.Popen([str(windowed if windowed.exists() else exe), "-m", "keynone", "settings"],
+                     cwd=str(paths.home), env={**os.environ, "KEYNONE_HOME": str(paths.home)},
+                     creationflags=subprocess.CREATE_NO_WINDOW)
 
 
 def missing_assets(config: Config, paths: Paths) -> list[str]:
@@ -67,13 +103,20 @@ class ListenerApp:
         self._sid = 0
         self._active_sid = 0
         self._session_started = 0.0
+        self._session_open = False  # recording, or released and still being finished
+        self._session_stopped = 0.0
         self._quit_timer: threading.Timer | None = None
         self._running = True
         self._main_thread = 0
+        self._user_paused = False  # "Pause hotkey" in the tray menu
+        self._suspended_until = 0.0  # the settings window is recording a new hotkey
+        self._next_config_check = 0.0
         icons = paths.cache / "icons"
-        self._icon_idle = write_icon(icons / "idle.ico", _IDLE_COLOR)
+        self._icon_idle = write_icon(icons / "idle.ico", BRAND_RGB)
         self._icon_rec = write_icon(icons / "recording.ico", _REC_COLOR)
-        self.tray = TrayIcon(self._tooltip(), self._icon_idle, self._menu, on_close=self.quit)
+        self.tray = TrayIcon(self._tooltip(), self._icon_idle, self._menu, on_close=self.quit,
+                             handlers={control.WM_RELOAD_CONFIG: self._on_reload_request,
+                                       control.WM_SUSPEND_HOTKEYS: self._on_suspend_request})
 
     # ----------------------------------------------------------------- setup
 
@@ -88,7 +131,14 @@ class ListenerApp:
     def _tooltip(self) -> str:
         return f"Keynone - hold {Chord.parse(self.config.hotkeys.dictate)} to dictate"
 
+    def _idle(self) -> bool:
+        """No dictation is being recorded or finished, so settings can change safely."""
+        finishing = (self._session_open
+                     and time.monotonic() - self._session_stopped < FINISH_GRACE_SECONDS)
+        return self._capture is None and not self.machine.active and not finishing
+
     def _maybe_reload_config(self) -> None:
+        """Apply config.toml if it changed (call only when idle)."""
         mtime = config_mtime(self.paths)
         if mtime == self._config_mtime:
             return
@@ -99,11 +149,29 @@ class ListenerApp:
         except (ConfigError, ValueError) as exc:
             self.tray.balloon("Keynone settings error", str(exc)[:250], warning=True)
             return
-        machine.enabled = self.machine.enabled
-        self.config, self.machine = config, machine
+        old, self.config, self.machine = self.config, config, machine
+        self._apply_enabled()
         self.cues.enabled = config.audio.cues
-        self.engine.quit()  # the next dictation starts an engine with the new settings
+        self.tray.set_tooltip(self._tooltip())
+        if engine_settings_changed(old, config):
+            self.engine.quit()  # the next dictation starts an engine with the new settings
         log.info("configuration reloaded")
+
+    def _apply_enabled(self) -> None:
+        self.machine.enabled = not self._user_paused and not self._suspended_until
+
+    # ----------------------------------------------------------------- messages (main thread)
+
+    def _on_reload_request(self, wparam: int, lparam: int) -> None:
+        self._next_config_check = 0.0
+        self._work.put(("wake",))
+
+    def _on_suspend_request(self, wparam: int, lparam: int) -> None:
+        seconds = min(int(wparam), control.MAX_SUSPEND_SECONDS)
+        if seconds and not self._idle():
+            return  # never in the middle of a dictation: its release would be lost
+        self._suspended_until = time.monotonic() + seconds if seconds else 0.0
+        self._apply_enabled()
 
     # ----------------------------------------------------------------- run
 
@@ -178,8 +246,19 @@ class ListenerApp:
                     log.info("maximum dictation length reached")
                     self._handle(Action.STOP)
                     self.machine.reset()
+                self._housekeeping()
             except Exception:
                 log.exception("listener action failed")
+
+    def _housekeeping(self) -> None:
+        now = time.monotonic()
+        if self._suspended_until and now >= self._suspended_until:
+            self._suspended_until = 0.0  # the settings window didn't resume us: do it anyway
+            self._apply_enabled()
+        if now >= self._next_config_check:
+            self._next_config_check = now + CONFIG_POLL_SECONDS
+            if self._idle():  # never mid-dictation: a new hotkey would lose the release
+                self._maybe_reload_config()
 
     def _handle(self, item: Any) -> None:
         if item is Action.START:
@@ -207,9 +286,9 @@ class ListenerApp:
                 self._engine_exited(args[0])
             elif kind == "balloon":
                 self.tray.balloon(args[0], args[1], warning=True)
+            # "wake": only interrupts the wait, so housekeeping runs now
 
     def _start_session(self, mode: str = "ptt") -> None:
-        self._maybe_reload_config()
         if self._quit_timer is not None:
             self._quit_timer.cancel()
             self._quit_timer = None
@@ -233,6 +312,7 @@ class ListenerApp:
             self.tray.balloon("Microphone unavailable", str(exc), warning=True)
             return
         self._session_started = time.monotonic()
+        self._session_open = True
         self.cues.play("edit" if mode == "edit" else "start")
         self.tray.set_icon(self._icon_rec)
 
@@ -240,6 +320,7 @@ class ListenerApp:
         capture, self._capture = self._capture, None
         if capture is not None:
             capture.stop()
+            self._session_stopped = time.monotonic()
             self.tray.set_icon(self._icon_idle)
 
     def _stop_session(self) -> None:
@@ -261,6 +342,8 @@ class ListenerApp:
     def _after_session(self, sid: int) -> None:
         if sid != self._active_sid or self._capture is not None:
             return  # a newer dictation is already running
+        self._session_open = False
+        self._next_config_check = 0.0  # settings saved meanwhile apply now
         keep = self.config.lifecycle.keep_warm_seconds
         if keep <= 0:
             threading.Thread(target=self.engine.quit, daemon=True).start()
@@ -277,6 +360,7 @@ class ListenerApp:
             self.engine.quit()
 
     def _engine_exited(self, code: int) -> None:
+        self._session_open = False
         if self._capture is not None:  # crashed mid-dictation
             self._stop_capture()
             self.machine.reset()
@@ -303,7 +387,7 @@ class ListenerApp:
 
     def _menu(self) -> list[MenuItem]:
         chord = Chord.parse(self.config.hotkeys.dictate)
-        paused = not self.machine.enabled
+        paused = self._user_paused
         items: list[MenuItem] = [
             (f"Keynone - hold {chord} to dictate", None),
             (f"Double-tap {chord} for hands-free, Esc cancels", None),
@@ -315,7 +399,8 @@ class ListenerApp:
             *items,
             ("-", None),
             ("Copy last dictation", self._copy_last),
-            ("Open settings", lambda: os.startfile(self.paths.config_file)),
+            ("Settings...", lambda: launch_settings_window(self.paths)),
+            ("Edit config.toml", lambda: os.startfile(self.paths.config_file)),
             ("Open data folder", lambda: os.startfile(self.paths.data)),
             ("-", None),
             ("Resume hotkey" if paused else "Pause hotkey", self._toggle_pause),
@@ -323,7 +408,8 @@ class ListenerApp:
         ]
 
     def _toggle_pause(self) -> None:
-        self.machine.enabled = not self.machine.enabled
+        self._user_paused = not self._user_paused
+        self._apply_enabled()
 
     def _copy_last(self) -> None:
         from keynone.engine.history import History  # lazy: keeps idle memory small
@@ -342,14 +428,7 @@ class ListenerApp:
 
 def stop_running_listener(timeout: float = 5.0) -> bool:
     """Ask a running listener (found by its tray window) to exit cleanly."""
-    hwnd = api.FindWindowW(TrayIcon.CLASS_NAME, None)
-    if not hwnd:
-        return False
-    api.PostMessageW(hwnd, api.WM_CLOSE, 0, 0)
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline and api.FindWindowW(TrayIcon.CLASS_NAME, None):
-        time.sleep(0.05)
-    return True
+    return control.stop_listener(timeout)
 
 
 def run_listener(*, verbose: bool = False, dry_run: bool = False) -> int:

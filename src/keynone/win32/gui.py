@@ -88,6 +88,8 @@ def run_message_loop() -> None:
 
 # --------------------------------------------------------------------------- icons
 
+BRAND_RGB = (59, 64, 87)  # the microphone badge: tray icon (idle) and settings window
+
 
 def write_icon(path: Path, background: tuple[int, int, int], size: int = 32) -> Path:
     """Draw a round badge with a microphone glyph and save it as a .ico file."""
@@ -162,11 +164,13 @@ class TrayIcon(Window):
     CLASS_NAME = "KeynoneTray"
 
     def __init__(self, tooltip: str, icon_path: Path, menu: Callable[[], list[MenuItem]],
-                 on_close: Callable[[], None] | None = None) -> None:
+                 on_close: Callable[[], None] | None = None,
+                 handlers: dict[int, Callable[[int, int], None]] | None = None) -> None:
         self._tooltip = tooltip
         self._icon = load_icon(icon_path)
         self._menu = menu
         self._on_close = on_close
+        self._handlers = handlers or {}  # private messages from other processes
         self._taskbar_created = api.RegisterWindowMessageW("TaskbarCreated")
 
     def show(self) -> None:
@@ -193,6 +197,11 @@ class TrayIcon(Window):
         self._notify(NIM_MODIFY)
         if old:
             api.DestroyIcon(old)
+
+    def set_tooltip(self, tooltip: str) -> None:
+        self._tooltip = tooltip
+        if self.hwnd:
+            self._notify(NIM_MODIFY)
 
     def balloon(self, title: str, text: str, warning: bool = False) -> None:
         data = self._data(NIF_INFO)
@@ -240,5 +249,9 @@ class TrayIcon(Window):
         if msg == api.WM_CLOSE:  # `keynone stop` or system shutdown
             if self._on_close:
                 self._on_close()
+            return 0
+        handler = self._handlers.get(msg)
+        if handler is not None:
+            handler(wparam, lparam)
             return 0
         return None

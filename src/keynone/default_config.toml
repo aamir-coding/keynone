@@ -1,6 +1,7 @@
 # Keynone settings.
-# This file is copied to data/config.toml on first run - edit that copy.
-# Changes are picked up automatically at the start of the next dictation.
+# This file is copied to data/config.toml on first run - edit that copy, here or
+# in the settings window (keynone settings, or Settings... in the tray menu).
+# A running Keynone picks up saved changes within a second (never mid-dictation).
 
 [hotkeys]
 # Hold to dictate, release to insert the polished text.

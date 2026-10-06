@@ -13,6 +13,7 @@
 | 6. Quality | 160+ unit tests, engine IPC integration test, opt-in desktop tests, ruff + mypy clean, end-to-end runs on synthesized speech | ✅ |
 | 7. Extras (v0.2) | Speak-to-edit, smart spacing + UIA password detection, multilingual speech + language-aware cleanup + translation, optional GPU (Vulkan) with CPU fallback | ✅ see doc 01 §1.6 |
 | 8. Stress test & hardening | 352-case adversarial corpus, real-recognizer replay with 5 voices, correction grammar, list and pause handling, alignment guard, quiet-microphone normalizer | ✅ see doc 01 §1.7 |
+| 9. Settings window | Tk window for every option (FR-45…FR-50): comment-preserving edits of `config.toml` (tomlkit), validation, shortcut recording, light/dark, About page; listener applies saved settings within a second | ✅ |
 
 ## 3.2 Your 5-minute verification (real voice)
 
@@ -42,6 +43,10 @@ If your accent or vocabulary trips the recognizer, add names/terms to
 10. **GPU:** `keynone setup --with llama.cpp-b11398-vulkan-x64`, set
     `[llm] gpu = "auto"`, run `keynone doctor` (it should show the GTX 1650), then
     compare speak-to-edit speed.
+11. **Settings window:** tray icon → *Settings...*. On *General*, press *Record*
+    next to the dictation hotkey, press `F9`, *Save*. Holding `F9` dictates at once
+    (no restart, no dictation with the old keys first). Open `data/config.toml`:
+    only that line changed, every comment is still there. Change it back.
 
 ## 3.3 Roadmap (towards full Typeless parity)
 
@@ -56,7 +61,8 @@ If your accent or vocabulary trips the recognizer, add names/terms to
 | P2 | Per-app tone | Style hints in the LLM prompt per app profile (email formal, chat casual), with guardrails |
 | P2 | "Ask" mode | Dictate a request with nothing selected and get generated text (needs a stronger model or GPU) |
 | P3 | Personal style learning | Learn dictionary entries from user edits; LoRA-fine-tune a ≤1B model on synthetic disfluent→clean pairs to replace prompting |
-| P3 | Settings UI & installer | Small settings window; signed MSIX/Inno installer; update check |
+| ✅ | Settings UI | Done in v0.2 (settings window; `config.toml` stays the source of truth) |
+| P3 | Installer & signing | Signed MSIX/Inno installer; update check |
 | P3 | Snippets & stats | Voice shortcuts ("insert my address"), words/WPM/time-saved dashboard |
 
 ## 3.4 Testing strategy
@@ -71,6 +77,7 @@ If your accent or vocabulary trips the recognizer, add names/terms to
 | Multilingual | Language detection, per-language rules/cues, strict guard, translation routing; sample recordings via `transcribe --language auto` | `tests/test_language.py`, `tests/test_multilingual.py` |
 | Stress (adversarial) | 352 dictations × 4 recognizer styles, rules only and with the LLM; the same cases spoken by 5 voices through the real recognizer; 24 speak-to-edit instructions. The rules-only part runs in every `pytest` | `tests/test_dictation_stress.py`, `scripts/stress_test.py` (doc 01 §1.7) |
 | Microphone level | Level normalizer: normal and moderately quiet speech untouched, quiet speech lifted, silence and sudden loud speech not pumped | `tests/test_audio_level.py` |
+| Settings | Every option in the window; edits keep comments and unknown keys; merge with outside edits; broken files; shortcut rules and recording; the window driven like a user (never shown); the listener applying saved settings only when idle | `tests/test_settings_*.py`, `tests/test_listener_reload.py` |
 | End-to-end | Synthesized speech, real-time playback, live-lag + latency metrics | `scripts/make_test_audio.py` + `keynone transcribe --realtime` |
 
 Rule for changes: every bug found end-to-end gets a regression test
