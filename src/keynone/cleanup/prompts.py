@@ -222,15 +222,41 @@ class PromptBuilder:
 
 REWRITE_SYSTEM = """\
 You are an editing tool. Apply the instruction to the text and reply with the edited text \
-only: no introduction, no explanation, no quotation marks, no code fences. Keep the language \
-of the text unless the instruction asks for another language. Keep line breaks and lists \
-unless the instruction says otherwise. If the instruction is unclear, make the smallest \
-reasonable change."""
+only: never describe what you changed, no introduction, no explanation, no quotation marks, \
+no code fences. Change only what the instruction asks for and keep everything else: the \
+facts, names, numbers, line breaks and lists. Never add a greeting, a sign-off or \
+placeholders such as [Name] unless the instruction asks for them. Keep the language of the \
+text unless the instruction asks for another language. If the instruction is unclear, make \
+the smallest reasonable change."""
 
-_REWRITE_EXAMPLE = (
-    "Instruction: make it more formal\n\nText:\nhey, can't make it today, sorry!",
-    "Hello, unfortunately I am unable to attend today. My apologies.",
+# Short, unlike everyday messages (a similar example gets copied by small models).
+_REWRITE_EXAMPLES = (
+    ("make it shorter",
+     "The quarterly inventory audit that was originally planned for the second week of March "
+     "has been postponed by the warehouse team until the new scanners arrive.",
+     "The March inventory audit is postponed until the new scanners arrive."),
+    ("add a greeting",
+     "The lab results are in the shared folder.",
+     "Hi, the lab results are in the shared folder."),
+    ("remove the last sentence",
+     "Pumps were serviced on Tuesday. Filters arrive Friday. Call me if anything breaks.",
+     "Pumps were serviced on Tuesday. Filters arrive Friday."),
 )
+
+
+def rewrite_prefix() -> str:
+    """The fixed, cacheable start of every rewrite prompt (instructions + examples)."""
+    parts = [f"<|im_start|>system\n{REWRITE_SYSTEM}<|im_end|>\n"]
+    for example_instruction, example_text, example_answer in _REWRITE_EXAMPLES:
+        parts.append(f"<|im_start|>user\nInstruction: {example_instruction}\n\nText:\n"
+                     f"{example_text}<|im_end|>\n")
+        parts.append(f"<|im_start|>assistant\n{example_answer}<|im_end|>\n")
+    return "".join(parts)
+
+
+def rewrite_example_texts() -> list[str]:
+    """Example texts and answers (a rewrite must never echo them)."""
+    return [t for _, text, answer in _REWRITE_EXAMPLES for t in (text, answer)]
 
 
 def rewrite_prompt(family: TemplateFamily, instruction: str, text: str) -> str:
@@ -238,14 +264,8 @@ def rewrite_prompt(family: TemplateFamily, instruction: str, text: str) -> str:
     opening = "<|im_start|>assistant\n"
     if family == "qwen":
         opening += "<think>\n\n</think>\n\n"
-    example_user, example_answer = _REWRITE_EXAMPLE
-    return (
-        f"<|im_start|>system\n{REWRITE_SYSTEM}<|im_end|>\n"
-        f"<|im_start|>user\n{example_user}<|im_end|>\n"
-        f"<|im_start|>assistant\n{example_answer}<|im_end|>\n"
-        f"<|im_start|>user\nInstruction: {instruction.strip()}\n\nText:\n{text}<|im_end|>\n"
-        f"{opening}"
-    )
+    return (f"{rewrite_prefix()}<|im_start|>user\nInstruction: {instruction.strip()}\n\n"
+            f"Text:\n{text}<|im_end|>\n{opening}")
 
 
 REWRITE_STOP = ["<|im_end|>", "<|im_start|>", "<|endoftext|>"]

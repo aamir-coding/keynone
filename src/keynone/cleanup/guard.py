@@ -203,19 +203,52 @@ _REWRITE_PREAMBLE_RE = re.compile(
     r"(?is)^(?:(?:sure|certainly|of course|okay|ok)[,!.]?\s*)?"
     r"(?:here(?:'s| is| are)\s+(?:the\s+|your\s+)?[^:\n]{0,60}:\s*)"
 )
+# A refusal of the request, not an apology the text itself makes ("I am sorry, but
+# I cannot make it to the meeting today" is a fine formal rewrite).
 _REFUSAL_RE = re.compile(
-    r"(?i)^(?:i'?m sorry|i am sorry|i can(?:not|'t)|as an ai|i'?m unable|i am unable)"
+    r"(?i)^(?:as an ai\b|(?:(?:i'?m|i am) sorry|i apologi[sz]e)?[,.]?\s*(?:but\s+)?"
+    r"(?:i\s+(?:can(?:not|'t)|am\s+unable\s+to|'m\s+unable\s+to|won't)|i'?m\s+not\s+able\s+to)"
+    r"\s+(?:help|assist|do\s+that|do\s+this|comply|fulfil+|complete|provide|create|write"
+    r"|translate|edit|rewrite|process)\b)"
 )
+# "The greeting has been added at the start of the text." - a report, not the edit.
+_DESCRIBES_EDIT_RE = re.compile(
+    r"(?i)\b(?:has|have)\s+been\s+(?:added|removed|changed|updated|rewritten|corrected|fixed"
+    r"|translated|shortened|replaced|deleted)\b.{0,40}\b(?:text|sentence|message|paragraph)\b"
+    r"|^(?:i\s+have|i've)\s+\w+ed\s+the\s+(?:text|sentence|message)"
+)
+_PLACEHOLDER_RE = re.compile(r"\[(?:your |recipient|name|company|date|sender)[^\]]{0,30}\]",
+                             re.I)
+
+
+def _grams(text: str, n: int = 4) -> set[tuple[str, ...]]:
+    words = _words(text)
+    return {tuple(words[i : i + n]) for i in range(len(words) - n + 1)}
+
+
+def _echoes_examples(original: str, text: str) -> bool:
+    """Small models sometimes answer with a prompt example instead of the selection."""
+    from keynone.cleanup.prompts import rewrite_example_texts
+
+    copied = _grams(text) - _grams(original)
+    return any(copied & _grams(example) for example in rewrite_example_texts())
 
 
 def validate_rewrite(original: str, candidate: str) -> GuardResult:
     """Check and clean a speak-to-edit result; keeps the selection's outer whitespace."""
     text = strip_wrappers(candidate)
     text = strip_wrappers(_REWRITE_PREAMBLE_RE.sub("", text, count=1))
+    text = "\n".join(line.rstrip() for line in text.split("\n"))  # markdown "  \n" breaks
     if not text:
         return GuardResult(False, text, "empty output")
     if _REFUSAL_RE.match(text):
         return GuardResult(False, text, "the model declined the instruction")
+    if _DESCRIBES_EDIT_RE.search(text) and not _DESCRIBES_EDIT_RE.search(original):
+        return GuardResult(False, text, "the model described the edit instead of making it")
+    if _PLACEHOLDER_RE.search(text) and not _PLACEHOLDER_RE.search(original):
+        return GuardResult(False, text, "template placeholders ([Your Name]) in the output")
+    if _echoes_examples(original, text):
+        return GuardResult(False, text, "the model repeated its prompt example")
     if re.search(r"(?im)^(?:instruction|text)\s*:", text):
         return GuardResult(False, text, "prompt leaked into output")
     if len(text) > 4 * len(original) + 600:

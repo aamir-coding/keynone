@@ -36,6 +36,7 @@ from keynone.cleanup.prompts import (
     PromptStyle,
     PromptVariant,
     TemplateFamily,
+    rewrite_prefix,
     rewrite_prompt,
 )
 from keynone.paths import Paths
@@ -392,6 +393,28 @@ class LlmPolisher:
             self.server.complete(rewrite_prompt(self.builder.family, "fix typos", "helo"),
                                  max_tokens=4, stop=REWRITE_STOP, slot=REWRITE_SLOT)
 
+    def _rewrite_prefix_name(self) -> str:
+        identity = (f"{self.server.model.name}|{self.server.context}|{self.server.gpu_device}|"
+                    f"{rewrite_prefix()}")
+        return f"rewrite-{hashlib.sha256(identity.encode()).hexdigest()[:16]}.bin"
+
+    def _load_rewrite_prefix_locked(self) -> None:
+        """Put the evaluated rewrite instructions/examples into slot 1 (saved once,
+        restored before every rewrite: hybrid models can't reuse a partial cache)."""
+        if not self.server.slot_dir:
+            return
+        name = self._rewrite_prefix_name()
+        if (self.server.slot_dir / name).is_file() and self.server.slot_action(
+                "restore", name, REWRITE_SLOT):
+            return
+        self.server.complete(rewrite_prefix(), max_tokens=0, stop=[], slot=REWRITE_SLOT)
+        self.server.slot_action("save", name, REWRITE_SLOT)
+
+    def prime_rewrite(self) -> None:
+        """Evaluate (or restore) the rewrite prefix so the first rewrite is fast."""
+        with self._lock, contextlib.suppress(LlmError):
+            self._load_rewrite_prefix_locked()
+
     def rewrite(
         self,
         instruction: str,
@@ -405,6 +428,8 @@ class LlmPolisher:
         budget = self.server.context - (len(prompt) // 3) - 64
         max_tokens = max(64, min(budget, 200 + len(text)))
         with self._lock:
+            with contextlib.suppress(LlmError):
+                self._load_rewrite_prefix_locked()
             return self.server.complete(prompt, max_tokens=max_tokens, stop=REWRITE_STOP,
                                         deadline=deadline, on_text=on_text, slot=REWRITE_SLOT)
 

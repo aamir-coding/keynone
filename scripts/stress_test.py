@@ -377,14 +377,14 @@ class Report:
 
 # --------------------------------------------------------------------------- LLM
 
-def start_polisher(gpu: str) -> Any:
+def start_polisher(gpu: str, model: str = "") -> Any:
     from keynone.cleanup.llm import build_polisher
     from keynone.config import load_config
     from keynone.win32.process import KillOnCloseJob
 
     config = load_config()
     job = KillOnCloseJob()
-    polisher = build_polisher(config.llm.model, get_paths(), threads=config.llm.threads,
+    polisher = build_polisher(model or config.llm.model, get_paths(), threads=config.llm.threads,
                               context=config.llm.context, gpu=gpu, job=job)
     if not polisher.server.wait_ready(120):
         raise SystemExit("llama-server did not start (see data/logs/llama-server.log)")
@@ -405,8 +405,8 @@ def settings_for(llm: bool) -> CleanupSettings:
 # --------------------------------------------------------------------------- commands
 
 def cmd_text(args: argparse.Namespace) -> int:
-    cases = load_cases(args.filter)
-    polisher = start_polisher(args.gpu) if args.llm else None
+    cases = load_cases(args.filter, args.cases)
+    polisher = start_polisher(args.gpu, args.model) if args.llm else None
     settings = settings_for(args.llm)
     report = Report()
     styles = args.styles.split(",")
@@ -447,7 +447,7 @@ def cmd_synth(args: argparse.Namespace) -> int:
         display, lang, rate = VOICES[voice]
         folder = base / voice
         folder.mkdir(parents=True, exist_ok=True)
-        for case in load_cases(args.filter):
+        for case in load_cases(args.filter, args.cases):
             out = folder / f"{case.id}.wav"
             if case.text_only or (out.exists() and not args.force):
                 continue
@@ -474,7 +474,7 @@ def cmd_asr(args: argparse.Namespace) -> int:
                             endpoint_silence=config.asr.endpoint_silence_seconds)
     audio_dir = paths.data / "stress" / "audio"
     out_dir = paths.data / "stress" / "asr"
-    wanted = load_cases(args.filter)
+    wanted = load_cases(args.filter, args.cases)
     ids = {c.id for c in wanted}
     count = 0
     for voice in args.voices.split(","):
@@ -507,8 +507,8 @@ def cmd_asr(args: argparse.Namespace) -> int:
 
 
 def cmd_audio(args: argparse.Namespace) -> int:
-    cases = {c.id: c for c in load_cases(args.filter)}
-    polisher = start_polisher(args.gpu) if args.llm else None
+    cases = {c.id: c for c in load_cases(args.filter, args.cases)}
+    polisher = start_polisher(args.gpu, args.model) if args.llm else None
     settings = settings_for(args.llm)
     report = Report()
     asr_dir = get_paths().data / "stress" / "asr"
@@ -538,18 +538,84 @@ def cmd_audio(args: argparse.Namespace) -> int:
     return 0
 
 
+def _check_edit(case: dict[str, Any], selection: str, output: str) -> list[str]:
+    problems = []
+    lowered = output.lower()
+    for options in case.get("must", []):
+        if not any(o.lower() in lowered for o in options):
+            problems.append(f"missing one of {options}")
+    for exact in case.get("must_cs", []):
+        if exact not in output:
+            problems.append(f"missing {exact!r} (case-sensitive)")
+    for bad in case.get("must_not", []):
+        if bad.lower() in lowered:
+            problems.append(f"contains {bad!r}")
+    ratio = len(output) / max(1, len(selection))
+    if "max_ratio" in case and ratio > case["max_ratio"]:
+        problems.append(f"too long ({ratio:.2f}x)")
+    if "min_ratio" in case and ratio < case["min_ratio"]:
+        problems.append(f"too short ({ratio:.2f}x)")
+    if "max_sentences" in case and len(re.findall(r"[.!?](?:\s|$)", output)) > case[
+            "max_sentences"]:
+        problems.append("more than one sentence")
+    if "ends_with" in case and not output.rstrip().endswith(case["ends_with"]):
+        problems.append(f"does not end with {case['ends_with']!r}")
+    return problems
+
+
+def cmd_edit(args: argparse.Namespace) -> int:
+    """Speak-to-edit: spoken instruction -> instruction cleanup -> rewrite -> guard."""
+    from keynone.cleanup import guard, rules
+
+    cases = [json.loads(line) for line in (EVALDATA / "speak_to_edit_eval.jsonl").read_text(
+        encoding="utf-8").splitlines() if line.strip()]
+    polisher = start_polisher(args.gpu, args.model)
+    passed = 0
+    times = []
+    for case in cases:
+        instruction = rules.clean_instruction(case["say"])
+        problems = [] if instruction.rstrip(".") == case["instruction"] else [
+            f"instruction heard as {instruction!r}"]
+        started = time.perf_counter()
+        result = polisher.rewrite(instruction, case["selection"],
+                                  deadline=time.monotonic() + 30)
+        times.append(time.perf_counter() - started)
+        verdict = guard.validate_rewrite(case["selection"], result.text)
+        output = verdict.text if verdict.ok else ""
+        if not verdict.ok:
+            problems.append(f"guard: {verdict.reason}")
+        else:
+            problems += _check_edit(case, case["selection"], output)
+        passed += not problems
+        mark = "PASS" if not problems else "FAIL"
+        print(f"{mark} {case['id']:18s} {times[-1]:5.1f}s  {instruction!r}\n"
+              f"     {case['selection']!r}\n  -> {output!r}"
+              + (f"\n     {'; '.join(problems)}" if problems else ""))
+    times.sort()
+    print(f"\n{passed}/{len(cases)} passed; rewrite time median {times[len(times) // 2]:.1f}s, "
+          f"max {times[-1]:.1f}s")
+    polisher.close()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
+    p = sub.add_parser("edit", help="speak-to-edit: instruction cleanup + rewrite + guard")
+    p.set_defaults(func=cmd_edit)
+    p.add_argument("--gpu", default="off", help='LLM device: "off" or "auto"')
+    p.add_argument("--model", default="", help="LLM model id (default: llm.model)")
     for name, func in (("text", cmd_text), ("synth", cmd_synth), ("asr", cmd_asr),
                        ("audio", cmd_audio)):
         p = sub.add_parser(name)
         p.set_defaults(func=func)
         p.add_argument("--filter", default="", help="regex on case id or category")
+        p.add_argument("--cases", default="main", choices=sorted(CASE_FILES))
         if name in ("text", "audio"):
             p.add_argument("--llm", action="store_true", help="use the local LLM (auto mode)")
             p.add_argument("--gpu", default="off", help='LLM device: "off" or "auto"')
+            p.add_argument("--model", default="", help="LLM model id (default: llm.model)")
             p.add_argument("--quiet", action="store_true", help="summary only")
             p.add_argument("--save", default="", help="save the rows as data/stress/report-NAME")
         if name == "text":

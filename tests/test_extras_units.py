@@ -106,6 +106,9 @@ def test_llm_falls_back_to_cpu_when_the_gpu_server_fails(monkeypatch) -> None:
         def warm_up_generation(self) -> None:
             pass
 
+        def prime_rewrite(self) -> None:
+            pass
+
     def fake_launch(gpu: str) -> FakePolisher:
         launched.append(gpu)
         if gpu != "off":
