@@ -74,10 +74,25 @@ def _filler_patterns(language: str) -> tuple[re.Pattern[str], re.Pattern[str]]:
     return _FILLER_RES[language]
 
 
+# After a sentence-initial "ER"/"ERM" these words show it was a filler the
+# recognizer capitalized ("ER the report is ready"), not an acronym ("ER doctors").
+_FILLER_FOLLOWERS = frozenset(
+    """the a an i we you he she they it it's so and but could can would will is are that this
+    let's please what how my our your there i'm we're""".split()
+)
+# Sentence-initial sounds the recognizer spells as words: "Hum, let me think."
+_LEADING_SOUND_RE = re.compile(r"(?i)(^|[.!?…]\s+)(?:hum|ahem|uhm)[,.]?\s+(?=[^\W_])")
+
+
 def _filler_sub(m: re.Match[str]) -> str:
     word = m.group(0)[len(m.group(1)) :].rstrip(",.…")
-    if len(word) > 1 and word.isupper():  # "ER", "AH": acronyms, not fillers
-        return m.group(0)
+    if len(word) > 1 and word.isupper():  # "ER", "AH": usually acronyms, not fillers
+        before = m.string[: m.start()] + m.group(1)
+        at_start = not before.strip() or before.rstrip().endswith((".", "!", "?", "…"))
+        following = re.match(r"\W*([\w'’]+)", m.string[m.end() :])
+        nxt = following.group(1).lower().replace("’", "'") if following else ""
+        if not (at_start and nxt in _FILLER_FOLLOWERS):
+            return m.group(0)
     return m.group(1)
 
 
@@ -99,6 +114,7 @@ def remove_fillers(text: str, language: str = "en") -> str:
     if language == "en":
         text = _LEADING_SOFT_RE.sub(r"\1", text)
         text = _TRAILING_SOFT_RE.sub("", text)
+        text = _LEADING_SOUND_RE.sub(r"\1", text)
     previous = None
     while previous != text:  # adjacent fillers ("um, uh,") need repeated passes
         previous = text
@@ -308,7 +324,8 @@ _QUESTION_START_RE = re.compile(
     r"(?:what(?!\s+an?\b)|why|how|where|when|who|whom|whose|which)(?:['’]s)?\b"
     # "do"/"have" are also imperatives ("Do it now", "Have a look"): people only
     rf"|(?:do|have)\s+{_PERSONS}\b"
-    r"|(?:can|could|would|will|shall|should|may|might|must|does|did|is|are|am|was|were|has|had"
+    r"|am\s+i\b"
+    r"|(?:can|could|would|will|shall|should|may|might|must|does|did|is|are|was|were|has|had"
     r"|isn['’]t|aren['’]t|wasn['’]t|weren['’]t|don['’]t|doesn['’]t|didn['’]t|won['’]t"
     r"|wouldn['’]t|can['’]t|couldn['’]t|shouldn['’]t|haven['’]t|hasn['’]t)"
     rf"\s+(?:{_SUBJECTS}|the|my|your|our|their|his|her|its|a|an|any|all|each|every)\b)"
@@ -843,9 +860,13 @@ def _qualify(text: str, m: re.Match[str], strength: int, scratch: bool) -> Cue |
         if not delimited:
             strength = VALUES_ONLY  # "order three pizzas make it four"
     elif core == "correction":
-        # "Correction, it's 4" / "room 12 correction room 14", not "Correction fluid ..."
+        # "Correction, it's 4" / "room 12 correction room 14" / "Correction: room 14",
+        # not "Correction fluid is on my desk"
+        repair = re.split(r"[.!?]", after, maxsplit=1)[0].split()
+        short_value = len(repair) <= 5 and not any(
+            _norm(w) in _AUXILIARIES for w in repair)
         if prev in _DETERMINERS or not (comma_after or (prev and _is_number(prev))
-                                        or (words_before and delimited)):
+                                        or (words_before and delimited) or short_value):
             return None
     elif scratch and core.split()[-2:-1] in (["scratch"], ["strike"], ["delete"], ["erase"]):
         # "we need to scratch that itch", "they want to strike that deal"
@@ -896,11 +917,15 @@ def _leading_cue(sentence: str) -> Cue | None:
 
 _WINDOW = 10  # how far back (in words) a correction may reach
 _NOT_CONTENT = frozenset(
-    "no nope oh okay ok so well um uh wait sorry yes yeah actually hmm ah right alright".split())
+    """no nope oh okay ok so well um uh er erm ah hmm hum wait sorry yes yeah actually right
+    alright i'm""".split()
+)
 
 
 def has_content(text: str) -> bool:
-    """``text`` says something beyond cue/discourse words ("No no" has nothing to correct)."""
+    """``text`` says something beyond cue/discourse words ("No no" has nothing to
+    correct, nor has "Uh, you know what, ...")."""
+    text = re.sub(r"(?i)\byou\s+know\s+what\b", " ", text)
     return any(t.norm not in _NOT_CONTENT for t in _tokens(text))
 
 
@@ -1090,11 +1115,21 @@ def _suffix(a: str, at: list[_Tok], b: str, bt: list[_Tok]) -> str | None:
     return None
 
 
+def _kind(token: _Tok) -> str:
+    if _is_number(token.norm):
+        return "number"
+    if token.norm in _TEMPORAL_CORE:
+        return "time"
+    return "proper" if _is_proper(token) else "word"
+
+
 def _swap_last(a: str, at: list[_Tok], b: str, bt: list[_Tok]) -> str | None:
-    """One content word for another ("grab coffee, no, tea for me")."""
+    """One content word for another of the same kind ("grab coffee, no, tea for me"),
+    never a name for a time ("Call him tomorrow. I meant Rohan")."""
     last, first = at[-1].norm, bt[0].norm
     closes = bt[0].raw.endswith((",", ".", "?", "!"))
     if (last not in _FUNCTION_WORDS and first not in _FUNCTION_WORDS
+            and _kind(at[-1]) == _kind(bt[0])
             and (len(bt) == 1 or closes or bt[1].norm in _JOINERS)):
         return _splice(a, at, len(at) - 1, b)
     return None
@@ -1175,10 +1210,10 @@ def resolve_corrections(text: str) -> str:
                           and _tokens(repair)[0].norm in _SUBJECT_PRONOUNS)
                 replaced = None if answer else correct(previous, repair, lead.strength)
                 if replaced is not None:
-                    out[-1] = _keep_question_mark(previous, replaced)
-                    continue
-                if not answer and (lead.scratch or (lead.strength == STRONG
-                                                    and _is_clause(_tokens(repair)))):
+                    # the merged sentence may hold another correction: resolved below
+                    current = _keep_question_mark(out.pop(), replaced)
+                elif not answer and (lead.scratch or (lead.strength == STRONG
+                                                      and _is_clause(_tokens(repair)))):
                     out.pop()  # "Scratch that, call me tonight": the previous sentence goes
                     current = upper_first(repair)
             elif repair and _DROP_AT_START_RE.match(current):
@@ -1247,6 +1282,24 @@ def ends_with_correction_cue(text: str) -> bool:
     return bool(_DANGLING_CUE_RE.search(text))
 
 
+def is_bare_cue(text: str) -> bool:
+    """Only a cue was said ("I mean", "No, wait"): the repair comes after the pause."""
+    m = _DANGLING_CUE_RE.search(text)
+    return m is not None and not has_content(text[: m.start()])
+
+
+def is_unfinished(text: str) -> bool:
+    """A sentence start that says nothing on its own: "First,", "The budget is"."""
+    words = [_norm(w) for w in text.split()]
+    words = [w for w in words if w]
+    if not words:
+        return True
+    if all(w in _NOT_CONTENT or w in _ORDINALS or w in ("number", "step", "and", "then")
+           for w in words):
+        return True
+    return len(words) <= 2 or _norm(words[-1]) in _NON_FINAL_WORDS
+
+
 # --------------------------------------------------------------------------- lists
 
 _ORDINALS = {
@@ -1313,7 +1366,8 @@ def _list_markers(text: str) -> list[_Marker]:
         previous = words_before[-1] if words_before and before[-1:].isalnum() else ""
         following = re.findall(r"[\w'’]+", text[m.end() :].lower())
         nxt = following[0] if following else ""
-        if previous in _DETERMINERS or previous in ("at", "which", "whose", "what"):
+        if previous in _DETERMINERS or previous in ("which", "whose", "what") or (
+                previous == "at" and m.group(0).lower().startswith("first")):
             continue  # "the first time", "our number one priority", "at first"
         if m.group("ord"):
             if nxt in _RANK_NOUNS and not m.group("ordnoun") and m.group(0)[-1] not in ",:.":
@@ -1690,6 +1744,14 @@ def restart_spans(text: str) -> list[tuple[int, int]]:
     return spans
 
 
+def is_run_on(text: str, min_words: int = 18) -> bool:
+    """Many words without a sentence break: the recognizer left the punctuation out
+    (people dictating quickly), worth the LLM's sentence splitting."""
+    body = text.strip().rstrip(".!?…")
+    return (len(body.split()) >= min_words and not re.search(r"[.!?…:;\n]", body)
+            and body.count(",") <= 1)
+
+
 def has_restart(text: str) -> bool:
     """A phrase restarted with a change: "I think we should, I think we must ..."."""
     return bool(restart_spans(text))
@@ -1797,6 +1859,28 @@ class RuleOptions:
 _DEFAULT_OPTIONS = RuleOptions()
 
 
+# The recognizer hears a correcting "no" as "nor" or "know":
+# "tomorrow morning nor tonight", "the bakery know the museum".
+_NEGATIVE_RE = re.compile(r"(?i)\b(?:neither|not|never|no|none|nobody|nothing|nowhere)\b|n['’]t\b")
+_NOR_RE = re.compile(r"(?i)(?<![\w'’])nor(?![\w'’])")
+# "at the bakery know the museum": the object of a preposition can't "know".
+_KNOW_RE = re.compile(
+    r"(?i)(?<![\w'’])(?P<head>(?:at|in|on|to|for|from|with|by|into|near)\s+"
+    r"(?:the|a|an|my|our|your|this|that)\s+[a-z][a-z'’]*,?\s+)know"
+    r"(?=\s+(?:the|a|an|my|our|your|this|that)\s)"
+)
+
+
+def fix_misheard_no(text: str) -> str:
+    """"nor" without a negative before it, and "know" where no verb can stand,
+    were a spoken "no" ("tomorrow morning nor tonight")."""
+    def nor(m: re.Match[str]) -> str:
+        sentence = re.split(r"[.!?]\s", m.string[: m.start()])[-1]
+        return m.group(0) if _NEGATIVE_RE.search(sentence) else "no"
+
+    return _KNOW_RE.sub(r"\g<head>no", _NOR_RE.sub(nor, text))
+
+
 def clean_sentence(text: str, options: RuleOptions | None = None) -> str:
     """Rule-based cleanup for one ASR sentence (or any short text)."""
     options = options or _DEFAULT_OPTIONS
@@ -1806,6 +1890,7 @@ def clean_sentence(text: str, options: RuleOptions | None = None) -> str:
         text = remove_repetitions(text, language)
     text = apply_dictionary(text, options.words, dict(options.replacements))
     if language == "en":
+        text = fix_misheard_no(text)
         text = normalize_times(text)
     text = tidy(text, language)
     if options.voice_commands:

@@ -63,6 +63,12 @@ FEW_SHOT: tuple[tuple[str, str], ...] = (
         "I'll be there by 6. Sorry, I meant 7, because the train is running late.",
         "I'll be there by 7, because the train is running late.",
     ),
+    (
+        "thanks for the update the build is green now so we can ship it tomorrow do you need "
+        "anything else from me",
+        "Thanks for the update. The build is green now, so we can ship it tomorrow. Do you need "
+        "anything else from me?",
+    ),
 )
 
 PromptStyle = Literal["doc", "chat"]

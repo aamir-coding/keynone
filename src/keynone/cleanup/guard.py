@@ -32,6 +32,11 @@ _ALLOWED_NEW = frozenset(
     percent o'clock first second third one two three four five six seven eight nine ten
     hundred thousand million billion""".split()
 )
+# Never added by a faithful cleanup: they change what the sentence says.
+_NEVER_NEW = frozenset(
+    """but because so therefore however although though since unless yet not never no don't
+    didn't won't can't isn't wasn't aren't doesn't""".split()
+)
 _NUMBER_WORDS = frozenset(
     """zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen
     fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy
@@ -160,7 +165,7 @@ def validate(source: str, candidate: str, *, has_correction: bool,
         and not any(_same(w, s) for s in src_set)
     ]
     allowed_novel = (1 if has_correction else 0) if strict else (0 if n_out < 20 else 1)
-    if len(novel) > allowed_novel:
+    if len(novel) > allowed_novel or any(w in _NEVER_NEW for w in novel):
         return GuardResult(False, text, f"novel words: {' '.join(novel[:6])}")
 
     if strict:

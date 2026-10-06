@@ -212,6 +212,37 @@ def norm_loose(text: str) -> str:
     return re.sub(r" *\n *", "\n", text).strip(" ")
 
 
+_CONTRACTIONS = {
+    "i'm": "i am", "you're": "you are", "we're": "we are", "they're": "they are",
+    "it's": "it is", "that's": "that is", "there's": "there is", "he's": "he is",
+    "she's": "she is", "i'll": "i will", "we'll": "we will", "you'll": "you will",
+    "i've": "i have", "we've": "we have", "i'd": "i would", "don't": "do not",
+    "can't": "can not", "won't": "will not", "isn't": "is not", "didn't": "did not",
+    "doesn't": "does not", "let's": "let us", "what's": "what is", "how's": "how is",
+}
+
+
+def _expand_numbers(words: list[str]) -> list[str]:
+    """"two hundred and five" -> "205" (after single number words became digits)."""
+    out: list[str] = []
+    i = 0
+    while i < len(words):
+        if (words[i].isdigit() and i + 1 < len(words) and words[i + 1] == "hundred"):
+            value = int(words[i]) * 100
+            i += 2
+            if i + 1 < len(words) and words[i] == "and" and words[i + 1].isdigit():
+                value += int(words[i + 1])
+                i += 2
+            elif i < len(words) and words[i].isdigit():
+                value += int(words[i])
+                i += 1
+            out.append(str(value))
+            continue
+        out.append(words[i])
+        i += 1
+    return out
+
+
 def norm_words(text: str) -> str:
     """Words only (case/punctuation-insensitive), keeping lines and list markers."""
     lines = []
@@ -219,9 +250,43 @@ def norm_words(text: str) -> str:
         marker = re.match(r"^\s*(\d+\.|-)\s+", line)
         body = line[marker.end():] if marker else line
         words = re.findall(r"[a-z0-9]+(?:['’][a-z]+)?", body.lower().replace("’", "'"))
-        words = [w for w in _numbers_to_digits(words) if w not in ("um", "uh")]
+        words = " ".join(_CONTRACTIONS.get(w, w) for w in words).split()
+        words = _expand_numbers([w for w in _numbers_to_digits(words) if w not in ("um", "uh")])
         lines.append(((marker.group(1) + " ") if marker else "") + " ".join(words))
     return "\n".join(lines).strip()
+
+
+def _edit_distance(a: list[str], b: list[str]) -> int:
+    previous = list(range(len(b) + 1))
+    for i, x in enumerate(a, start=1):
+        current = [i]
+        for j, y in enumerate(b, start=1):
+            current.append(min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (x != y)))
+        previous = current
+    return previous[-1]
+
+
+def _structure(text: str) -> list[str]:
+    """Line layout: paragraph breaks, list markers and question marks."""
+    return [("list" if re.match(r"^\s*(?:\d+\.|-)\s", line) else
+             "q" if line.rstrip().endswith("?") else "text" if line.strip() else "")
+            for line in text.split("\n")]
+
+
+def asr_tolerant(case: Case, output: str, raw: str) -> bool:
+    """Right structure, and no more word errors than the recognizer itself made.
+
+    The cleanup cannot repair misrecognized words ("know the park" for "no the
+    park"); this measures whether it did its own job on what it was given."""
+    heard = norm_words(raw).split()
+    spoken = norm_words(" ".join(case.say)).split()
+    asr_errors = _edit_distance(spoken, heard)
+    for option in case.accepted:
+        if _structure(output) != _structure(option):
+            continue
+        if _edit_distance(norm_words(option).split(), norm_words(output).split()) <= asr_errors:
+            return True
+    return False
 
 
 LEVEL_FOR_STYLE = {"punct": "exact", "run": "exact", "bare": "loose", "runbare": "words",
@@ -432,6 +497,7 @@ def cmd_audio(args: argparse.Namespace) -> int:
     settings = settings_for(args.llm)
     report = Report()
     asr_dir = get_paths().data / "stress" / "asr"
+    strict_passes = 0
     for voice in args.voices.split(","):
         for path in sorted((asr_dir / voice).glob("*.json")):
             case = cases.get(path.stem)
@@ -443,8 +509,12 @@ def cmd_audio(args: argparse.Namespace) -> int:
                 report.add(case, f"audio:{voice}", Outcome("", []), False, data["final"])
                 continue
             outcome = run_updates(updates, data["final"], settings, polisher)
-            report.add(case, f"audio:{voice}", outcome, matches(case, outcome.text, "words"),
-                       data["final"])
+            strict = matches(case, outcome.text, "words")
+            strict_passes += strict
+            tolerant = strict or asr_tolerant(case, outcome.text, data["final"])
+            report.add(case, f"audio:{voice}", outcome, tolerant, data["final"])
+    print(f"strict word-level passes: {strict_passes}; the table counts a case as passed when "
+          "its structure is right and it has no more word errors than the recognizer made")
     report.print(show_failures=not args.quiet, llm_used=args.llm)
     if args.save:
         print(f"saved {report.save(args.save)}")

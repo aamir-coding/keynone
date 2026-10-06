@@ -170,7 +170,8 @@ class CleanupPipeline:
         if self.settings.llm_mode == "always":
             # Deterministic list formatting beats letting the LLM restyle a list.
             return correction or rules.format_spoken_list(text) is None
-        return correction or rules.has_soft_fillers(text)
+        return (correction or rules.has_soft_fillers(text)
+                or (rules.is_run_on(text) and rules.format_spoken_list(text) is None))
 
     # ----------------------------------------------------------------- input
 
@@ -240,8 +241,9 @@ class CleanupPipeline:
             before = raw[: cue.start].rstrip(" ,;:")
             repair = raw[cue.end :].lstrip(" ,.;:!")
             if not rules.has_content(before):  # "Scratch that, I'll call you tonight."
-                if repair and any(c.scratch for c in rules.find_cues(repair)):
-                    self._scratch_locked(None)
+                again = next((c for c in rules.find_cues(repair) if c.scratch), None)
+                if again is not None and not rules.has_content(repair[: again.start]):
+                    self._scratch_locked(None)  # "scratch that, scratch that, ..."
                     raw = repair
                     continue
                 self._scratch_locked(repair or None)
@@ -252,24 +254,44 @@ class CleanupPipeline:
         self._append_locked(raw)
 
     def _scratch_within_locked(self, before: str, repair: str) -> str:
-        """"<before> scratch that <repair>" in one fragment: correct, or drop ``before``."""
+        """"<before> scratch that <repair>" in one fragment: correct, or drop the
+        last sentence of ``before`` (what was said since the last sentence end)."""
         if not repair:  # "... new paragraph scratch that": only the break goes
             kept = rules.strip_trailing_break(before)
             if kept is not None:
                 return kept
+        start = rules.last_sentence_start(before)
+        head, before = before[:start], before[start:]
         prev = self._last_text_unit_locked()
-        if repair and prev is not None and self._continues_locked(prev, before):
-            start = rules.last_sentence_start(prev.raw)
-            replaced = rules.correct(f"{prev.raw[start:]} {before}", repair, rules.STRONG)
-            if replaced is not None:
-                self._set_raw_locked(prev, (prev.raw[:start] + replaced).strip())
+        if not head and prev is not None and self._continues_locked(prev, before):
+            begin = rules.last_sentence_start(prev.raw)
+            if repair:
+                replaced = rules.correct(f"{prev.raw[begin:]} {before}", repair, rules.STRONG)
+                if replaced is not None:
+                    self._set_raw_locked(prev, (prev.raw[:begin] + replaced).strip())
+                    return ""
+            elif rules.is_unfinished(prev.raw[begin:]):
+                # "The budget is [pause] too high scratch that": all of it goes
+                self._set_raw_locked(prev, prev.raw[:begin].rstrip())
+                if not prev.raw:
+                    self._units.remove(prev)
                 return ""
         replaced = rules.correct(before, repair, rules.STRONG) if repair else None
-        return replaced or repair
+        return f"{head}{replaced or repair}".strip()
 
     def _scratch_locked(self, repair: str | None) -> None:
         """"Scratch that": remove what was said last (since the previous pause or the
         end of the previous sentence) - or correct it, when ``repair`` fits."""
+        # A lead-in without content ("Uh, you know what" [pause] "scratch that") is
+        # not what the speaker wants gone: it goes, and the scratch reaches past it.
+        while self._units and not self._units[-1].is_break:
+            unit = self._units[-1]
+            cut = max(rules.last_sentence_start(unit.raw), unit.fragments[-1])
+            if rules.has_content(unit.raw[cut:]):
+                break
+            self._set_raw_locked(unit, unit.raw[:cut].rstrip(" ,;:"))
+            if not unit.raw.strip():
+                self._units.remove(unit)
         if self._units and self._units[-1].is_break:
             self._units.pop()  # the last thing said was "new paragraph"
         elif self._units:
@@ -281,6 +303,8 @@ class CleanupPipeline:
                     self._set_raw_locked(unit, (unit.raw[:start] + replaced).strip())
                     return
             cut = max(start, unit.fragments[-1])
+            if rules.is_unfinished(unit.raw[start:cut]):
+                cut = start  # "First, [pause] milk. Scratch that." - "First," goes too
             self._set_raw_locked(unit, unit.raw[:cut].rstrip(" ,;:"))
             if not unit.raw.strip():
                 self._units.remove(unit)
@@ -323,8 +347,9 @@ class CleanupPipeline:
             closed = tail if tail.endswith(_TERMINAL) else rules.close_sentence(tail)
             if fits and not new_sentence:
                 # The pause before "no, ..." / "sorry, ..." works like a comma, and a
-                # sentence-ending correction ("... at three. No, four.") joins too.
-                if rules.starts_with_correction_cue(raw):
+                # sentence-ending correction ("... at three. No, four.") joins too -
+                # also a cue said on its own ("Send it to John." [pause] "I mean").
+                if rules.starts_with_correction_cue(raw) or rules.is_bare_cue(raw):
                     head = tail if tail.endswith((*_TERMINAL, ",")) else tail.rstrip(";:") + ","
                     self._merge_locked(prev, head, raw)
                     return
