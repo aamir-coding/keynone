@@ -6,6 +6,7 @@ import re
 from collections.abc import Iterable
 
 from keynone.cleanup.language import detect_language, function_words
+from keynone.cleanup.rules import close_before_break, is_question
 from keynone.config import Style
 
 _NUMBERED_RE = re.compile(r"^(\s*)(\d+)[.)]\s+(.*)$")
@@ -35,16 +36,6 @@ def normalize_lists(text: str) -> str:
 _SENTENCE_END_RE = re.compile(r"[.!?…:;,。！？；：，।؟][\"'”’)\]」』]*$")
 _CJK_RE = re.compile(r"[぀-ヿ一-鿿]")  # kana + Han (no spaces between)
 _FULL_STOP = {"zh": "。", "ja": "。", "hi": "।"}
-_SUBJECTS = r"(?:you|we|i|they|he|she|anyone|someone|somebody|anybody|everyone)"
-_QUESTION_START_RE = re.compile(
-    r"(?i)^(?:"
-    r"(?:what(?!\s+an?\b)|why|how|where|when|who|whom|whose|which)\b"
-    # "do"/"have" are also imperatives ("Do it now", "Have a look"): subjects only
-    rf"|(?:do|have)\s+{_SUBJECTS}\b"
-    r"|(?:can|could|would|will|shall|should|may|might|does|did|is|are|was|were|has|had"
-    r"|isn't|aren't|wasn't|don't|doesn't|didn't|won't|wouldn't|can't|couldn't|shouldn't)"
-    rf"\s+(?:{_SUBJECTS}|it|this|that|there|the|my|your|our|their)\b)"
-)
 
 
 def _last_sentence(line: str) -> str:
@@ -62,10 +53,18 @@ def _close_sentence(text: str) -> str:
     sentence = _last_sentence(last_line)
     language = detect_language(sentence)
     if language == "en":
-        mark = "?" if _QUESTION_START_RE.match(sentence) else "."
+        mark = "?" if is_question(sentence) else "."
     else:
         mark = _FULL_STOP.get(language, ".")
     return text.rstrip() + mark
+
+
+def _close_before_break(text: str) -> str:
+    """Like :func:`rules.close_before_break`, with full stops of other languages."""
+    last_line = text.rstrip().rsplit("\n", 1)[-1]
+    if detect_language(last_line) == "en":
+        return close_before_break(text)
+    return _close_sentence(text)
 
 
 def _separator(left: str, right: str) -> str:
@@ -81,8 +80,8 @@ def join_units(units: Iterable[str]) -> str:
     for unit in units:
         if not unit:
             continue
-        if out and not out.endswith("\n") and not unit.startswith("\n"):
-            out = _close_sentence(out)
+        if out and not out.endswith("\n"):
+            out = _close_before_break(out) if unit.startswith("\n") else _close_sentence(out)
         if not out or out.endswith("\n") or unit.startswith("\n"):
             out += unit
         elif is_list_line(out.rsplit("\n", 1)[-1]) or is_list_line(unit.split("\n", 1)[0]):
@@ -92,17 +91,27 @@ def join_units(units: Iterable[str]) -> str:
     return out
 
 
+def _edge_breaks(text: str) -> tuple[str, str, str]:
+    """(leading line breaks, body, trailing line breaks) - at most two each."""
+    lead = re.match(r"^\s*", text).group(0).count("\n")  # type: ignore[union-attr]
+    trail = re.search(r"\s*$", text).group(0).count("\n")  # type: ignore[union-attr]
+    return "\n" * min(lead, 2), text.strip(), "\n" * min(trail, 2)
+
+
 _OPENERS = "([{\"'“‘«¿¡/"
 _CLOSERS = ".,;:!?)]}\"'”’»…"
 _SENTENCE_ENDS = ".!?…。！？।"
 _KEEP_CASE = frozenset({"i", "i'm", "i'll", "i've", "i'd", "i’m", "i’ll", "i’ve", "i’d"})
 _LOWERCASE_STARTERS = function_words("en") | frozenset(
     """also maybe please thanks thank then everyone everybody anyone anybody someone somebody
-    all both each every let's it's that's there's what's here's we're they're you're we'll
-    they'll you'll it'll yes no okay ok sure now today tomorrow yesterday tonight because since
-    unless although though however otherwise instead still even only never always sometimes
-    usually perhaps probably actually basically just one two three which who whose when where
-    why how if as than like some any most more less""".split()
+    everything anything something nothing all both each every let's it's that's there's
+    what's here's we're they're you're we'll they'll you'll it'll yes no okay ok sure now today
+    tomorrow yesterday tonight because since unless although though however otherwise instead
+    still even only never always sometimes usually perhaps probably actually basically just
+    one two three which who whose when where why how if as than like some any most more less
+    honestly definitely certainly obviously hopefully unfortunately luckily maybe again soon
+    later first next finally then here there whatever whenever wherever really very quite
+    almost already another other others many much few several plenty""".split()
 )
 
 
@@ -129,18 +138,38 @@ def _upper_first(text: str) -> str:
     return text
 
 
+def _opens(before: str) -> bool:
+    """The text before the caret ends with an opening bracket/quote (no space after it).
+    A straight quote opens only after whitespace or another opener: 'said "hi"|' closes."""
+    if not before or before[-1] not in _OPENERS:
+        return False
+    if before[-1] in "\"'":
+        return len(before) == 1 or before[-2].isspace() or before[-2] in _OPENERS
+    return True
+
+
 def adapt_to_context(text: str, before: str, after: str, *, style: Style,
                      trailing_space: bool) -> str:
     """Fit inserted text to the characters around the cursor (smart spacing).
 
     ``before``/``after`` are the texts just before/after the caret, read via UI
     Automation. Handles: casing mid-sentence vs. at a sentence start, a space
-    between words, lists starting on their own line, no doubled punctuation,
-    and dropping the period when the sentence continues after the cursor.
+    between words, lists starting on their own line, spoken line breaks that the
+    text before the cursor already provides, no doubled punctuation, and dropping
+    the period when the sentence continues after the cursor.
     """
-    body = text.strip(" ")
-    if not body.strip():
-        return text
+    lead_breaks, body, trail_breaks = _edge_breaks(text)
+    if not body:
+        if not lead_breaks:
+            return text
+        # Only "new line"/"new paragraph" was said: don't pile up empty lines.
+        have = len(before) - len(before.rstrip("\n")) if before.strip() else 2
+        return "\n" * max(0, len(lead_breaks) - have)
+    if lead_breaks:
+        have = len(before) - len(before.rstrip("\n")) if before.strip() else 2
+        lead_breaks = "\n" * max(0, len(lead_breaks) - have)
+        if lead_breaks:
+            before = before + lead_breaks  # the text now starts on a fresh line
     line_before = before.rsplit("\n", 1)[-1]
     at_line_start = not line_before.strip()
     # Last meaningful character, looking through opening brackets/quotes: "(" after
@@ -148,27 +177,30 @@ def adapt_to_context(text: str, before: str, after: str, *, style: Style,
     last = line_before.rstrip(" \t" + _OPENERS)[-1:]
     if not last and line_before.strip():
         last = "."  # only brackets/quotes on the line: treat as a sentence start
-    multi_line = "\n" in body.strip("\n") or is_list_line(body)
+    first_line = body.split("\n", 1)[0]
+    multi_line = "\n" in body
+    starts_list = is_list_line(first_line)
     cjk_join = bool(_CJK_RE.match(body[0])) and (not before or bool(_CJK_RE.match(before[-1]))
                                                   or before[-1] in "。！？，、")
-    if multi_line:
-        body = body.strip("\n")
-        leading = "" if at_line_start else "\n"
-    elif (not before or before[-1].isspace() or before[-1] in _OPENERS or cjk_join
+    if starts_list:
+        leading = "" if at_line_start else "\n"  # a list starts on its own line
+    elif (at_line_start or before[-1].isspace() or _opens(before) or cjk_join
           or body[0] in ",.;:!?)]}…"):
         leading = ""
     else:
         leading = " "
-    if not multi_line and style != "code":
+    if not starts_list and style != "code":
         if at_line_start or last in _SENTENCE_ENDS:
             body = _upper_first(body)
         elif last.isalnum() or last in ",;:-–—":
             body = _lower_first_if_safe(body)
     following = after[:1]
     next_visible = after.lstrip(" \t")[:1]
-    if multi_line or following in ("", "\n"):
-        trailing = " " if (trailing_space and not multi_line and not _CJK_RE.match(body[-1])
-                           and body[-1] not in "。！？") else ""
+    if trail_breaks:
+        trailing = ""
+    elif multi_line or following in ("", "\n"):
+        trailing = " " if (trailing_space and not is_list_line(body.rsplit("\n", 1)[-1])
+                           and not _CJK_RE.match(body[-1]) and body[-1] not in "。！？") else ""
     elif following.isspace():
         trailing = ""
     elif following in _CLOSERS:
@@ -177,32 +209,52 @@ def adapt_to_context(text: str, before: str, after: str, *, style: Style,
     else:
         trailing = "" if _CJK_RE.match(following) else " "
     single_sentence = not re.search(r"[.!?…]\s", body.rstrip(".!?…"))
-    if (not multi_line and single_sentence and next_visible
+    if (not multi_line and not trail_breaks and single_sentence and next_visible
             and (next_visible.islower() or next_visible.isdigit())):
         body = body.rstrip(".")  # the sentence continues after the cursor
-    return leading + body + trailing
+    return lead_breaks + leading + body + trail_breaks + trailing
+
+
+def _short_line_list(text: str) -> bool:
+    """The last line is a short label in a multi-line text ("Milk\\nEggs",
+    "Best regards\\nAamir"): no period."""
+    lines = text.split("\n")
+    if len(lines) < 2 or len(lines[-1].split()) > 2:
+        return False
+    previous = lines[-2].rstrip()
+    return bool(previous) and not previous.endswith((".", "!", "?", "…"))
 
 
 def finalize(
     text: str, *, style: Style, drop_final_period: bool, trailing_space: bool
 ) -> str:
-    """Last touches before insertion into the target app."""
+    """Last touches before insertion into the target app.
+
+    Line breaks spoken at the very start or end ("new paragraph ...") are kept:
+    they are where the user wants the text relative to what is already there.
+    """
     text = re.sub(r"[ \t]+\n", "\n", text)
-    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    lead, text, trail = _edge_breaks(text)
     if not text:
-        return ""
+        return lead or trail
     text = normalize_lists(text)
     if style != "code":
-        text = _close_sentence(text)
+        if trail:
+            text = _close_before_break(text)
+        elif not _short_line_list(text):
+            text = _close_sentence(text)
     if (
         style == "chat"
         and drop_final_period
+        and not (lead or trail)
         and "\n" not in text
         and text.endswith(".")
         and not text.endswith("..")
         and not re.search(r"[.!?…]\s", text[:-1])
     ):
         text = text[:-1]
+    text = lead + text + trail
     if trailing_space and not text.endswith("\n"):
         text += " "
     return text

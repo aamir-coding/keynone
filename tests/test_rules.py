@@ -14,13 +14,21 @@ def clean(text: str, **kw) -> str:
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
+        # a filler set off by commas takes its commas along
         ("Um, so I was thinking, uh, we could meet on Tuesday.",
-         "So I was thinking, we could meet on Tuesday."),
+         "So I was thinking we could meet on Tuesday."),
         ("I uh think so.", "I think so."),
         ("That's it, um.", "That's it."),
         ("Hmm. Let me check.", "Let me check."),
         ("Umm, uh, okay.", "Okay."),
-        ("Uh, we need, um, more time.", "We need, more time."),
+        ("Uh, we need, um, more time.", "We need more time."),
+        # ... unless the first comma ends an introductory clause
+        ("When I got there, um, everyone had left.", "When I got there, everyone had left."),
+        ("Okay, uh, let's start.", "Okay, let's start."),
+        # comma-delimited soft fillers are fillers too
+        ("It's, you know, a small change.", "It's a small change."),
+        ("I was, like, really surprised.", "I was really surprised."),
+        ("You know, I think it's fine.", "I think it's fine."),
     ],
 )
 def test_fillers_removed(raw: str, expected: str) -> None:
@@ -200,7 +208,7 @@ def test_not_a_list(text: str) -> None:
          "Let's push the release to Friday, so QA has more time."),
         ("Book a table for four, sorry, five people at 7.", "Book a table for five people at 7."),
         ("Send the invoice to accounting, I mean to finance, before noon.",
-         "Send the invoice to finance, before noon."),
+         "Send the invoice to finance before noon."),
         ("The meeting is in room 204, no wait, room 205.", "The meeting is in room 205."),
         ("Remind me to call mom at five thirty, no, six thirty tonight.",
          "Remind me to call mom at six thirty tonight."),
@@ -252,7 +260,7 @@ def test_ambiguous_corrections_left_alone(text: str) -> None:
     [
         "Let's meet at 3, no wait, 4.",
         "Send it to John, I mean Sarah.",
-        "Actually, make that Friday.",
+        "The party is on Friday. Actually, make that the weekend.",
         "It costs 20, sorry, 30 dollars.",
         "We'll take the train, or rather the bus.",
         "I'll call at 5, no, 6.",

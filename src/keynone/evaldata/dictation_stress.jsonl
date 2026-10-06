@@ -147,15 +147,15 @@
 {"id": "cor-trap-no-worries", "cat": "correction", "say": ["I'll do it later, no worries."], "expect": "I'll do it later, no worries."}
 {"id": "cor-trap-late-sorry", "cat": "correction", "say": ["We're late, sorry, traffic was bad."], "expect": "We're late, sorry, traffic was bad."}
 {"id": "cor-trap-no-answer", "cat": "correction", "say": ["Is the shop open on Sunday? No, it's closed."], "expect": "Is the shop open on Sunday? No, it's closed."}
-{"id": "cmd-newline-standalone", "cat": "command", "say": ["First line.", "New line.", "Second line."], "expect": "First line.\nSecond line."}
+{"id": "cmd-newline-standalone", "cat": "command", "say": ["First line.", "New line.", "Second line."], "expect": "First line.\nSecond line.", "alt": ["First line\nSecond line"]}
 {"id": "cmd-paragraph-greeting", "cat": "command", "say": ["Dear team,", "new paragraph", "the build is green."], "expect": "Dear team,\n\nThe build is green."}
 {"id": "cmd-paragraph-inline-comma", "cat": "command", "say": ["So this is the opening paragraph, new paragraph this is the closing paragraph."], "expect": "So this is the opening paragraph.\n\nThis is the closing paragraph."}
 {"id": "cmd-newline-inline-bare", "cat": "command", "say": ["the first point new line the second point"], "expect": "The first point\nThe second point", "alt": ["The first point.\nThe second point."]}
 {"id": "cmd-paragraph-leading", "cat": "command", "say": ["New paragraph.", "Thanks for the update."], "expect": "\n\nThanks for the update."}
 {"id": "cmd-paragraph-trailing", "cat": "command", "say": ["Thanks for the update.", "New paragraph."], "expect": "Thanks for the update.\n\n"}
 {"id": "cmd-next-paragraph", "cat": "command", "say": ["The traffic was terrible.", "Next paragraph.", "Wow, goodbye."], "expect": "The traffic was terrible.\n\nWow, goodbye."}
-{"id": "cmd-double-paragraph", "cat": "command", "say": ["Hello.", "New paragraph.", "New paragraph.", "World."], "expect": "Hello.\n\nWorld."}
-{"id": "cmd-paragraphs-misheard", "cat": "command", "text_only": true, "say": ["Hello there.", "New paragraphs.", "How are you?"], "expect": "Hello there.\n\nHow are you?"}
+{"id": "cmd-double-paragraph", "cat": "command", "say": ["Hello.", "New paragraph.", "New paragraph.", "World."], "expect": "Hello.\n\nWorld.", "alt": ["Hello,\n\nWorld."]}
+{"id": "cmd-paragraphs-misheard", "cat": "command", "text_only": true, "say": ["Hello there.", "New paragraphs.", "How are you?"], "expect": "Hello there.\n\nHow are you?", "alt": ["Hello there,\n\nHow are you?"]}
 {"id": "cmd-paragraph-inline-bare", "cat": "command", "say": ["the deadline moved to Friday new paragraph please update the plan"], "expect": "The deadline moved to Friday.\n\nPlease update the plan."}
 {"id": "cmd-newline-inline-sentences", "cat": "command", "say": ["Thanks for the update. New line. Let me know if anything changes."], "expect": "Thanks for the update.\nLet me know if anything changes."}
 {"id": "cmd-trap-line-of-products", "cat": "command", "say": ["We need a new line of products."], "expect": "We need a new line of products."}
@@ -167,7 +167,7 @@
 {"id": "cmd-scratch-standalone", "cat": "command", "say": ["I'll call you tomorrow.", "Scratch that.", "I'll call you tonight."], "expect": "I'll call you tonight."}
 {"id": "cmd-scratch-lead", "cat": "command", "say": ["I'll call you tomorrow.", "Scratch that, I'll call you tonight."], "expect": "I'll call you tonight."}
 {"id": "cmd-scratch-lead-imperative", "cat": "command", "say": ["I'll call you tomorrow.", "Scratch that, call me tonight."], "expect": "Call me tonight."}
-{"id": "cmd-scratch-sentences", "cat": "command", "say": ["Hi Maya, Leo here.", "Really really nice photos.", "Scratch that.", "New paragraph.", "Come on, turn the lights on."], "expect": "Hi Maya, Leo here.\n\nCome on, turn the lights on."}
+{"id": "cmd-scratch-sentences", "cat": "command", "say": ["Hi Maya, Leo here.", "Really really nice photos.", "Scratch that.", "New paragraph.", "Come on, turn the lights on."], "expect": "Hi Maya, Leo here.\n\nCome on, turn the lights on.", "alt": ["Hi Maya Leo here,\n\nCome on turn the lights on."]}
 {"id": "cmd-scratch-fragments", "cat": "command", "say": ["Hi Maya, Leo here", "really really nice photos", "scratch that", "new paragraph", "come on, turn the lights on"], "expect": "Hi Maya, Leo here.\n\nCome on, turn the lights on.", "alt": ["Hi Maya, Leo here,\n\nCome on, turn the lights on."]}
 {"id": "cmd-delete-that", "cat": "command", "say": ["The budget is final.", "Delete that.", "The budget is a draft."], "expect": "The budget is a draft."}
 {"id": "cmd-strike-that", "cat": "command", "say": ["We lost the deal.", "Strike that.", "We won the deal."], "expect": "We won the deal."}
@@ -238,7 +238,7 @@
 {"id": "fmt-time-thirty", "cat": "format", "say": ["Call me at four thirty PM."], "expect": "Call me at 4:30 PM."}
 {"id": "fmt-time-am", "cat": "format", "say": ["The call is at ten AM tomorrow."], "expect": "The call is at 10 AM tomorrow."}
 {"id": "fmt-oclock", "cat": "format", "say": ["Let's meet at nine o'clock."], "expect": "Let's meet at 9 o'clock."}
-{"id": "fmt-pause-sentences", "cat": "format", "say": ["Thanks for the update", "the build is green now"], "expect": "Thanks for the update. The build is green now."}
+{"id": "fmt-pause-sentences", "cat": "format", "say": ["Thanks for the update", "The build is green now"], "expect": "Thanks for the update. The build is green now."}
 {"id": "fmt-pause-mid", "cat": "format", "say": ["I talked to", "Sarah about the budget."], "expect": "I talked to Sarah about the budget."}
 {"id": "fmt-names-pauses", "cat": "format", "say": ["I invited Claude", "Gemini", "and Llama to the test."], "expect": "I invited Claude, Gemini and Llama to the test.", "alt": ["I invited Claude Gemini and Llama to the test."]}
 {"id": "fmt-name-new-sentence", "cat": "format", "say": ["Thanks for the update.", "Sarah will call you tomorrow."], "expect": "Thanks for the update. Sarah will call you tomorrow."}

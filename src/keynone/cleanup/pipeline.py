@@ -28,11 +28,15 @@ from keynone.config import LlmMode
 log = logging.getLogger(__name__)
 
 _TERMINAL = (".", "!", "?", "…", ":", "\n")
-_LEADING_SCRATCH_RE = re.compile(
-    r"(?i)^(?:scratch|delete|strike|erase)\s+that[,.!:;]?\s+(?P<rest>\S.*)$"
-)
-_GREETING_RE = re.compile(r"(?i)^(?:hi|hello|hey|dear|good (?:morning|afternoon|evening))\b")
 _LEADING_PUNCT_RE = re.compile(r"^([.!?…,;:]+)\s*")
+# A command cut in two by a pause: "... Scratch" | "that I'll call you tonight".
+_COMMAND_HEAD_RE = re.compile(
+    r"(?i)(?:^|\s)(?P<head>(?:(?:no|oh)[,.]?\s+)?(?:scratch|strike|delete|erase)|new|next)[.,]?$"
+)
+_COMMAND_TAIL_RE = {
+    "scratch": re.compile(r"(?i)^(?:that|this)\b"),
+    "break": re.compile(r"(?i)^(?:paragraph|para|line)s?\b"),
+}
 
 
 class PolishResult(Protocol):
@@ -81,6 +85,9 @@ class _Unit:
     done_version: int = -1
     polished: str = ""
     is_break: bool = False
+    # Where each pause-separated fragment starts in ``raw``: "scratch that"
+    # removes what was said since the last pause, not a whole run-on sentence.
+    fragments: list[int] = field(default_factory=lambda: [0])
 
 
 def _word_count(text: str) -> int:
@@ -156,7 +163,10 @@ class CleanupPipeline:
             # reliable outside English, so plain sentences keep the ASR text.
             return (rules.has_correction_cue(text, language)
                     or rules.has_soft_fillers(text, language))
-        correction = rules.has_correction_cue(text)
+        # A restarted phrase ("I think we should, I think we must"), unless it is
+        # just the markers of a list the rules already formatted.
+        restart = rules.has_restart(text) and rules.format_spoken_list(text) is None
+        correction = rules.has_correction_cue(text) or restart
         if self.settings.llm_mode == "always":
             # Deterministic list formatting beats letting the LLM restyle a list.
             return correction or rules.format_spoken_list(text) is None
@@ -174,76 +184,171 @@ class CleanupPipeline:
             # the pause that flushed the sentence: give it back to that sentence.
             leading = _LEADING_PUNCT_RE.match(raw)
             if leading:
-                prev = self._units[-1] if self._units and not self._units[-1].is_break else None
+                prev = self._last_text_unit_locked()
                 if prev is not None and not prev.raw.rstrip().endswith((*_TERMINAL, ",")):
                     prev.raw = prev.raw.rstrip() + leading.group(1)
                     prev.version += 1
                 raw = raw[leading.end() :]
-                if not raw:
-                    self._cond.notify_all()
-                    return
-            commands_on = self.settings.rules.voice_commands
-            command = rules.command_for(raw) if commands_on else None
-            scratch_then = _LEADING_SCRATCH_RE.match(raw) if commands_on else None
-            if command == rules.SCRATCH:
-                self._scratch_previous_locked()
-            elif command is not None:
-                self._close_open_sentence_locked(before_break=True)
-                self._units.append(_Unit(raw=command, is_break=True))
-            elif scratch_then:
-                self._scratch_previous_locked()
-                self._append_locked(scratch_then.group("rest"))
-            else:
-                self._append_locked(raw)
+            if raw:
+                if self.settings.rules.voice_commands:
+                    self._add_with_commands_locked(self._rejoin_command_locked(raw))
+                else:
+                    self._append_locked(raw)
             self._cond.notify_all()
         self._notify()
 
-    def _close_open_sentence_locked(self, *, before_break: bool = False) -> _Unit | None:
-        """End the last unit's sentence if the recognizer left it unpunctuated."""
-        prev = self._units[-1] if self._units and not self._units[-1].is_break else None
-        if prev is None or prev.raw.rstrip().endswith((*_TERMINAL, ",")):
-            return prev
-        body = prev.raw.rstrip(" ,;:")
-        greeting = before_break and _word_count(body) <= 4 and _GREETING_RE.match(body)
-        prev.raw = body + ("," if greeting else ".")
-        prev.version += 1
-        return prev
+    def _last_text_unit_locked(self) -> _Unit | None:
+        return self._units[-1] if self._units and not self._units[-1].is_break else None
 
-    def _append_locked(self, raw: str) -> None:
-        prev = self._units[-1] if self._units and not self._units[-1].is_break else None
-        if prev is not None:
-            limit = self.settings.max_unit_words
-            tail = prev.raw.rstrip()
-            open_sentence = not tail.endswith(_TERMINAL)
-            mid_sentence = (raw[:1].islower() or tail.endswith(",")
-                            or rules.ends_with_non_final_word(tail))
-            if open_sentence and mid_sentence and _word_count(prev.raw) + _word_count(raw) <= limit:
-                prev.raw = f"{tail} {raw}"  # a pause in the middle of a sentence
-                prev.version += 1
+    def _set_raw_locked(self, unit: _Unit, raw: str) -> None:
+        unit.raw = raw
+        unit.fragments = [f for f in unit.fragments if f < len(raw)] or [0]
+        unit.version += 1
+
+    def _rejoin_command_locked(self, raw: str) -> str:
+        """Take back a command's first word that the pause left in the previous unit."""
+        prev = self._last_text_unit_locked()
+        if prev is None:
+            return raw
+        head = _COMMAND_HEAD_RE.search(prev.raw)
+        if head is None:
+            return raw
+        word = head.group("head").split()[-1].lower()
+        kind = "break" if word in ("new", "next") else "scratch"
+        if not _COMMAND_TAIL_RE[kind].match(raw):
+            return raw
+        self._set_raw_locked(prev, prev.raw[: head.start("head")].rstrip(" ,"))
+        if not prev.raw.strip():
+            self._units.remove(prev)
+        return f"{head.group('head')} {raw}"
+
+    def _add_with_commands_locked(self, raw: str) -> None:
+        command = rules.command_for(raw)
+        if command == rules.SCRATCH:
+            self._scratch_locked(None)
+            return
+        if command is not None:
+            self._close_open_sentence_locked()
+            self._units.append(_Unit(raw=command, is_break=True))
+            return
+        for _ in range(4):  # "... scratch that, scratch that, ..." one cue at a time
+            if self._unit_language(raw) != "en":
+                break
+            cue = next((c for c in rules.find_cues(raw) if c.scratch), None)
+            if cue is None:
+                break
+            before = raw[: cue.start].rstrip(" ,;:")
+            repair = raw[cue.end :].lstrip(" ,.;:!")
+            if not rules.has_content(before):  # "Scratch that, I'll call you tonight."
+                if repair and any(c.scratch for c in rules.find_cues(repair)):
+                    self._scratch_locked(None)
+                    raw = repair
+                    continue
+                self._scratch_locked(repair or None)
                 return
+            raw = self._scratch_within_locked(before, repair)  # "... scratch that ..."
+            if not raw:
+                return
+        self._append_locked(raw)
+
+    def _scratch_within_locked(self, before: str, repair: str) -> str:
+        """"<before> scratch that <repair>" in one fragment: correct, or drop ``before``."""
+        if not repair:  # "... new paragraph scratch that": only the break goes
+            kept = rules.strip_trailing_break(before)
+            if kept is not None:
+                return kept
+        prev = self._last_text_unit_locked()
+        if repair and prev is not None and self._continues_locked(prev, before):
+            start = rules.last_sentence_start(prev.raw)
+            replaced = rules.correct(f"{prev.raw[start:]} {before}", repair, rules.STRONG)
+            if replaced is not None:
+                self._set_raw_locked(prev, (prev.raw[:start] + replaced).strip())
+                return ""
+        replaced = rules.correct(before, repair, rules.STRONG) if repair else None
+        return replaced or repair
+
+    def _scratch_locked(self, repair: str | None) -> None:
+        """"Scratch that": remove what was said last (since the previous pause or the
+        end of the previous sentence) - or correct it, when ``repair`` fits."""
+        if self._units and self._units[-1].is_break:
+            self._units.pop()  # the last thing said was "new paragraph"
+        elif self._units:
+            unit = self._units[-1]
+            start = rules.last_sentence_start(unit.raw)
+            if repair:
+                replaced = rules.correct(unit.raw[start:], repair, rules.STRONG)
+                if replaced is not None:
+                    self._set_raw_locked(unit, (unit.raw[:start] + replaced).strip())
+                    return
+            cut = max(start, unit.fragments[-1])
+            self._set_raw_locked(unit, unit.raw[:cut].rstrip(" ,;:"))
+            if not unit.raw.strip():
+                self._units.remove(unit)
+        if repair:  # "scratch that, I'll call you tonight" vs "... scratch that, tonight"
+            self._append_locked(repair, new_sentence=rules.is_clause(repair))
+
+    def _close_open_sentence_locked(self) -> None:
+        """End the last unit's sentence before a spoken line/paragraph break."""
+        prev = self._last_text_unit_locked()
+        if prev is None or prev.raw.rstrip().endswith((*_TERMINAL, ",")):
+            return
+        closed = rules.close_before_break(prev.raw)
+        if closed != prev.raw:
+            prev.raw = closed
+            prev.version += 1
+
+    def _continues_locked(self, prev: _Unit, raw: str) -> bool:
+        """``raw`` (after a pause) continues the open sentence at the end of ``prev``."""
+        tail = prev.raw.rstrip()
+        if tail.endswith(_TERMINAL):
+            return False
+        if rules.starts_like_sentence(raw):
+            return False  # "... is ready [pause] did you see it", "[pause] let's go"
+        if rules.ends_list_item(prev.raw) and rules.starts_clause(raw):
+            return False  # "third, bread [pause] that's all for now"
+        return (raw[:1].islower() or tail.endswith(",")
+                or rules.ends_with_non_final_word(tail)
+                or rules.ends_with_correction_cue(tail)
+                # A name after a pause, which the recognizer did not end with a
+                # period: "I invited Claude [pause] Gemini and Llama".
+                or rules.starts_with_name(raw))
+
+    def _append_locked(self, raw: str, *, new_sentence: bool = False) -> None:
+        prev = self._last_text_unit_locked()
+        if prev is not None:
+            in_list = rules.continues_list(prev.raw, raw)
+            limit = self.settings.max_unit_words * (3 if in_list else 1)
+            fits = _word_count(prev.raw) + _word_count(raw) <= limit
+            tail = prev.raw.rstrip()
+            closed = tail if tail.endswith(_TERMINAL) else rules.close_sentence(tail)
+            if fits and not new_sentence:
+                # The pause before "no, ..." / "sorry, ..." works like a comma, and a
+                # sentence-ending correction ("... at three. No, four.") joins too.
+                if rules.starts_with_correction_cue(raw):
+                    head = tail if tail.endswith((*_TERMINAL, ",")) else tail.rstrip(";:") + ","
+                    self._merge_locked(prev, head, raw)
+                    return
+                # The pause before a list marker ends the intro or the previous item:
+                # "We need three things [pause] first eggs [pause] second milk".
+                opens_list = rules.starts_first_list_item(raw) and _word_count(prev.raw) <= 25
+                if rules.starts_list_item(raw) and (in_list or opens_list):
+                    self._merge_locked(prev, closed, raw)
+                    return
+                if self._continues_locked(prev, raw):
+                    self._merge_locked(prev, tail, raw)  # a pause mid-sentence
+                    return
+                if in_list:  # the item after "Number two." [pause] "A car."
+                    self._merge_locked(prev, closed, raw)
+                    return
             # Otherwise the pause ended a sentence (maybe left unpunctuated by the
             # recognizer: the period is added when units are joined).
-            joined = f"{tail.rstrip(',;:')}. {raw}" if open_sentence else f"{tail} {raw}"
-            corrects = rules.starts_with_correction_cue(raw)
-            lists = rules.starts_list_item(raw) and rules.has_list_cue(joined)
-            # "We need three things. First, ..." -> the short intro heads the list.
-            opens_list = rules.starts_first_list_item(raw) and _word_count(prev.raw) <= 25
-            if (corrects or lists or opens_list) and _word_count(joined) <= limit:
-                prev.raw = joined
-                prev.version += 1
-                return
         self._units.append(_Unit(raw=raw))
 
-    def _scratch_previous_locked(self) -> None:
-        while self._units and self._units[-1].is_break:
-            self._units.pop()
-        if not self._units:
-            return
-        unit = self._units[-1]
-        unit.raw = rules.drop_last_sentence(unit.raw)
+    @staticmethod
+    def _merge_locked(unit: _Unit, head: str, fragment: str) -> None:
+        unit.raw = f"{head} {fragment}"
+        unit.fragments.append(len(head) + 1)
         unit.version += 1
-        if not unit.raw.strip():
-            self._units.pop()
 
     # ----------------------------------------------------------------- worker
 

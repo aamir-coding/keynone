@@ -37,7 +37,11 @@ from keynone.cleanup.segmenter import SentenceSegmenter
 from keynone.paths import get_paths
 
 ROOT = Path(__file__).resolve().parents[1]
-CASES = ROOT / "src" / "keynone" / "evaldata" / "dictation_stress.jsonl"
+EVALDATA = ROOT / "src" / "keynone" / "evaldata"
+# "main" was used while fixing the rules; "holdout" was written separately and
+# measures how well the fixes generalize.
+CASE_FILES = {"main": ["dictation_stress.jsonl"], "holdout": ["dictation_stress_holdout.jsonl"],
+              "all": ["dictation_stress.jsonl", "dictation_stress_holdout.jsonl"]}
 
 # name -> (Windows voice, SSML language, default rate)
 VOICES: dict[str, tuple[str, str, str]] = {
@@ -73,8 +77,9 @@ class Case:
         return [self.expect, *self.alt]
 
 
-def load_cases(pattern: str = "") -> list[Case]:
-    cases = [Case(**json.loads(line)) for line in CASES.read_text(encoding="utf-8").splitlines()
+def load_cases(pattern: str = "", which: str = "main") -> list[Case]:
+    cases = [Case(**json.loads(line)) for name in CASE_FILES[which]
+             for line in (EVALDATA / name).read_text(encoding="utf-8").splitlines()
              if line.strip()]
     if pattern:
         rx = re.compile(pattern)

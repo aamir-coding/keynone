@@ -32,7 +32,7 @@ def test_words_that_are_fillers_in_english_survive(text: str, language: str) -> 
     [
         ("Ähm, ich schicke dir den Bericht morgen.", "de", "Ich schicke dir den Bericht morgen."),
         ("Euh, on peut se voir demain.", "fr", "On peut se voir demain."),
-        ("Eh, creo que, eh, está bien.", "es", "Creo que, está bien."),
+        ("Eh, creo que, eh, está bien.", "es", "Creo que está bien."),
         ("Mmm, ok.", "it", "Ok."),
     ],
 )
@@ -69,8 +69,8 @@ def test_correction_cues_in_other_languages(text: str, language: str, cue: bool)
 def test_strict_guard_rejects_invented_words_and_new_questions() -> None:
     source = "No preguntes qué puede hacer tu país por ti. Pregunta qué puedes hacer tú."
     damaged = "No preguntes qué tu país te ajuda. ¿Qué puedes hacer tú?"
-    assert validate(source, damaged, has_correction=False, strict=False).ok  # lenient (EN)
     assert not validate(source, damaged, has_correction=False, strict=True).ok
+    assert validate(source, source, has_correction=False, strict=True).ok
 
 
 class _Recorder:
