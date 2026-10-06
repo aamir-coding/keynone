@@ -110,7 +110,57 @@ Cold start (first dictation after the engine unloaded): ASR ready after ~4.6–5
 | Speak-to-edit | Ctrl+Win+Alt; selection via UI Automation (clipboard copy as fallback), rewrite on a second llama-server slot so the cleanup cache stays intact, guarded, pasted over the selection | 80-word paragraph: 2.9–3.5 s on CPU, 0.5–0.7 s on GPU; verified end to end in a real text box |
 | GPU | Official llama.cpp Vulkan build (32 MB, no CUDA install); `auto` prefers the discrete GPU (the iGPU reports more shared memory, so "largest memory" would pick the wrong one); automatic CPU fallback | GTX 1650: 136–138 tok/s vs 41 tok/s on CPU; cleanup eval p95 165 ms vs 486 ms; 33/34 vs 34/34 (one near-tie decision differs due to GPU floating point) |
 
-## 1.7 Known limitations
+## 1.7 Stress test of the core features (October 2026)
+
+An adversarial corpus of **352 dictations** (`src/keynone/evaldata/dictation_stress*.jsonl`):
+self-corrections and the phrases that only look like one ("no rush", "I'm
+sorry"), voice commands, lists, fillers, repetitions, questions, and mixed or
+formatting cases — 132 / 52 / 46 / 39 / 36 / 27 / 20 cases. 253 cases were used while fixing; 99
+were written afterwards as a held-out check. `scripts/stress_test.py` runs every
+case in four recognizer styles: with punctuation, as one run-on sentence, without
+punctuation, and both. Then the cases were spoken with five Windows voices and
+recognized by the real speech model, so the cleanup sees genuine recognizer
+mistakes. That last step is scored tolerantly: the structure must be right, with
+no more word errors than the recognizer itself made.
+
+| Rules only (instant) | punctuated | run-on | no punctuation | neither |
+|---|---|---|---|---|
+| Before (v0.2 code), 244 cases | 181 | 178 | 146 | 151 |
+| **After**, 244 cases | **244** | **242** | **229** | **231** |
+| Before, 99 held-out cases | 77 | 76 | 62 | 66 |
+| **After**, 99 held-out cases | **99** | **99** | **92** | **96** |
+
+| Real speech (5 voices) | rules only (240 cases) | with LFM2.5 (249 cases) |
+|---|---|---|
+| Before | 173–182 | 179–187 |
+| **After** | **225–234** | **232–241** |
+
+With the language model on all 352 cases (LFM2.5, CPU): 348 / 346 / 327 / 333.
+Qwen3.5 2B on the GPU scores the same within one case.
+
+Speak-to-edit (24 instructions spoken with the same voices, e.g. "make it
+shorter", "turn this into a list", "translate to Spanish"): LFM2.5 gets 18/24
+right, with a median of 0.6 s on the CPU and 0.2 s on the GPU. Qwen3.5 2B gets
+23/24 (0.4 s on the GPU), so it is the recommended model when speak-to-edit
+matters.
+
+What changed (details in the code comments and in
+`tests/test_dictation_regressions.py`):
+
+* **Corrections.** A small cue grammar ("no", "no wait", "sorry, I meant",
+  "actually make that", "scratch that") with strengths. The replaced phrase is
+  aligned by type: a time replaces a time, a weekday replaces a weekday. Cues that
+  are probably not corrections are left for the language model to judge.
+* **Lists.** "first … second …", "number one …", counted lists ("three things:
+  a, b and c"), and lists recited with spoken numbers.
+* **Pauses.** The recognizer splits sentences at pauses. Those fragments are
+  re-joined, punctuation that arrives late is re-attached, and "scratch that"
+  removes exactly what was said since the last pause.
+* **Guard.** Language model output is aligned word by word against the input.
+  Anything that drops content, answers the text or adds words is rejected, and
+  the rule-based text is used instead.
+
+## 1.8 Known limitations
 
 * English is the default; other languages use the multilingual model (slightly
   less accurate for English) and lean on rules more than the LLM.

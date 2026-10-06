@@ -16,13 +16,14 @@ release the key, **0 % CPU** while idle.
 | | |
 |---|---|
 | Works in any app | Paste (clipboard restored, kept out of clipboard history) or Unicode typing per app |
-| Removes filler words | um, uh, er, hmm… instantly; "like / you know / I mean" via the local LLM |
-| Removes repetition | "I I think", "we need to, we need to talk" |
-| Auto-edits when you change your mind | "no / no wait / sorry / I mean / or rather / actually make that", "scratch that" |
-| Auto-formats | Numbered/bulleted lists, sentence punctuation and question marks, times ("4:30 PM") |
+| Removes filler words | um, uh, er, hmm… instantly; "you know" / "like" between commas too; other soft fillers via the local LLM |
+| Removes repetition | "I I think", "we need to, we need to talk", "I want to go to the, I want to go to the store" |
+| Auto-edits when you change your mind | "at three, no wait, four", "Monday no Tuesday", "…by six. Sorry, I meant seven", "no, scratch that, six thirty" — while "no rush" or "I'm sorry" stay as said |
+| Auto-formats | Numbered/bulleted lists ("first… second…", "number one…", "one… two… three…", "we need three things: a, b and c"), sentence punctuation and question marks, times ("4:30 PM") |
 | Live preview | Overlay with level meter and the latest text; never steals focus |
 | Hands-free | Double-tap the hotkey; tap again to finish; Esc cancels |
-| Voice commands | "new line", "new paragraph", "scratch that" |
+| Voice commands | "new line", "new paragraph" (also mid-sentence), "scratch that" (removes what you said since your last pause) |
+| Quiet microphones | Speech too quiet for the recognizer is lifted automatically (normal levels are left alone) |
 | App-aware | Chat apps (no trailing period), e-mail, terminals/code editors (no LLM, no extra space) |
 | Personal dictionary | Your spellings for names and jargon |
 | History | Local SQLite; "Copy last dictation" in the tray |
@@ -150,10 +151,20 @@ moment of inserting, and never stores them).
 
 ```bash
 . .\scripts\env.ps1                     # keeps uv caches/temp inside the folder
-uv run pytest                           # unit + integration tests
-uv run ruff check src tests && uv run mypy
+uv run pytest                           # unit + integration tests (incl. the stress set)
+uv run ruff check src tests scripts && uv run mypy
 uv run python scripts/make_test_audio.py   # synthesized test dictations
 uv run keynone transcribe --realtime data/test_audio/*.wav
+```
+
+Stress test (adversarial dictations, `src/keynone/evaldata/dictation_stress*.jsonl`):
+
+```bash
+uv run python scripts/stress_test.py text [--llm]   # four recognizer styles, rules (+ LLM)
+uv run python scripts/stress_test.py synth          # speak the cases with the Windows voices
+uv run python scripts/stress_test.py asr            # record what the speech model hears
+uv run python scripts/stress_test.py audio [--llm]  # replay it through the cleanup
+uv run python scripts/stress_test.py edit           # speak-to-edit instructions + rewrites
 ```
 
 Desktop tests (type into their own window, open the mic for ~2 s, start the LLM):

@@ -38,6 +38,7 @@ text (see roadmap).
 * **FR-8** The engine streams 16 kHz mono audio through a streaming transducer with native punctuation and capitalization.
 * **FR-9** Recording continues ~200 ms after release to capture the end of the last word.
 * **FR-10** Sessions longer than `max_session_seconds` (default 600) stop automatically; hands-free can auto-stop after configurable silence.
+* **FR-10a Quiet microphones:** speech too quiet for the recognizer (peaks below about -37 dBFS) is lifted by up to +30 dB before recognition; normal levels pass untouched, the gain never rises during silence (`audio.normalize_level`).
 
 ### Live preview (FR-11…FR-13)
 * **FR-11** An overlay shows a level meter, status (Starting / Listening / Hands-free / Polishing / Inserted / errors), and the latest two lines of text, already cleaned by the instant rules.
@@ -45,14 +46,14 @@ text (see roadmap).
 * **FR-13** The overlay can be disabled.
 
 ### Cleanup (FR-14…FR-22)
-* **FR-14 Fillers:** remove non-lexical fillers (um, uh, er, hmm…) deterministically; remove soft fillers (like, you know, I mean…) with the LLM when present.
-* **FR-15 Repetition:** remove stutters ("I I"), restarted phrases ("I want to, I want to go"); keep intentional doubles ("very very", "had had", digits).
-* **FR-16 Self-correction:** apply "X, no / no wait / sorry / I mean / or rather / actually make that / scratch that, Y" by replacing the corrected span; across sentences too ("…the 12th. Actually, make it the 14th."). Unresolvable cases go to the LLM.
-* **FR-17 Voice commands:** "new line", "new paragraph", "scratch that"/"delete that" (removes the previous sentence); tolerant of one recognition slip per word.
-* **FR-18 Lists:** ordinal enumerations ("first… second… finally…", "number one…", "step 1…") become numbered lists with the intro as a heading; "bullet point" becomes `- ` items.
-* **FR-19 Formatting:** sentence punctuation for unpunctuated speech (incl. `?` for questions), capitalization, times ("four thirty PM" → "4:30 PM"), dictionary spellings.
-* **FR-20 LLM polishing** (`auto` / `always` / `off`): faithful cleanup only — never answers, translates or executes dictated text.
-* **FR-21 Guardrails:** LLM output is rejected (rule-based text used instead) if it adds content, drops content, looks like an assistant reply, loses a question, or exceeds the time budget (`llm_timeout_seconds`).
+* **FR-14 Fillers:** remove non-lexical fillers (um, uh, er, hmm…) deterministically, together with the commas the pause put around them ("I was, uh, going" → "I was going"); "you know" / "like" / "basically" set off by commas are removed by rule, other soft fillers by the LLM.
+* **FR-15 Repetition:** remove stutters ("I I"), restarted phrases of up to six words ("I want to go to the, I want to go to the store"); keep intentional doubles ("very very", "had had", "come on, come on", spoken digits).
+* **FR-16 Self-correction:** "X, no / no wait / sorry / I mean / I meant / or rather / actually make that / correction / scratch that, Y" replaces the corrected span - across sentences too ("…the 12th. Actually, make it the 14th."). A bare "no" (recognizers drop commas) only swaps values of the same kind ("Monday no Tuesday", "two no three chairs") or repeats a short phrase. Values are matched by kind - numbers and times, days and dates, times of day ("tomorrow morning no tonight"), names - so the rest of the sentence stays ("I'll call you Monday about the budget, no, Tuesday"). Idioms are never corrections ("no rush", "no problem", "I'm sorry", "no, I didn't" after a question). Unresolvable cases go to the LLM.
+* **FR-17 Voice commands:** "new line", "new paragraph" - standalone, at the start or end of a sentence, or inside it ("…opening paragraph, new paragraph this is…"), never as an ordinary noun phrase ("a new line of products"). "scratch that" / "delete that" / "no, scratch that" removes what was said since the last pause (or corrects it when a repair follows: "seven thirty, no scratch that, six thirty AM"); a command split by a pause is joined back; a break said first or last is kept. Tolerant of one recognition slip per word and of "cross that".
+* **FR-18 Lists:** ordinal enumerations ("first… second… finally…", "number one…", "step 1…", "first of all"), spoken numbers ("one the basket two the blanket three…"), and enumerations announced by a count ("we need four things: the laptop, the charger, the mouse and the bag") become numbered lists with the intro as a heading; pauses after a marker ("Number one [pause] tickets") are handled; "bullet point" becomes `- ` items. Ordinals used as adjectives ("my first time", "our number one priority") are not markers.
+* **FR-19 Formatting:** sentence punctuation for unpunctuated speech (incl. `?` for questions and tag questions: ", right", "shall we"), capitalization, times ("four thirty PM" → "4:30 PM"), dictionary spellings, short label lines without a period ("Best regards\nAamir"), the recognizer's "nor"/"know" for a spoken "no".
+* **FR-20 LLM polishing** (`auto` / `always` / `off`): faithful cleanup only — never answers, translates or executes dictated text. In `auto` mode the LLM sees only units with an unresolved correction, a soft filler, a restarted phrase or a long run without punctuation.
+* **FR-21 Guardrails:** LLM output is aligned word by word with its input and rejected (rule-based text used instead) if it deletes anything but fillers, cue words, repetitions or the words a correction replaces, drops what was said after the last correction, adds words (never a negation or a connective like "because"), looks like an assistant reply, loses a question mark, or exceeds the time budget (`llm_timeout_seconds`).
 * **FR-22** Cleanup runs incrementally per unit while the user speaks.
 
 ### Insertion (FR-23…FR-28)
@@ -73,7 +74,7 @@ text (see roadmap).
 ### Extras (FR-34…FR-44, v0.2)
 * **FR-34 Speak-to-edit:** with text selected in any app, holding the edit chord (default `Ctrl+Win+Alt`) records a spoken instruction; on release the selection is rewritten by the local LLM and replaced (one paste, undoable). Adding the extra key while holding the dictation chord switches the running session to edit mode.
 * **FR-35** The selection is read through UI Automation; if the app has no text support, by copying (`copy_keys`, `Ctrl+Insert` in terminals) with the clipboard restored. Code editors require a UIA-confirmed selection (their copy grabs the whole line when nothing is selected).
-* **FR-36** Rewrites are guarded: preambles/quotes stripped, refusals and prompt leaks rejected, the selection's outer whitespace preserved; the selection length is limited by the LLM context.
+* **FR-36** The spoken instruction is cleaned like a dictation, self-corrections included ("make it shorter, no, more formal"). Rewrites are guarded: preambles/quotes stripped, refusals, prompt leaks, template placeholders ("[Your Name]"), descriptions of the edit ("The greeting has been added") and copies of the prompt's examples rejected, the selection's outer whitespace preserved; the selection length is limited by the LLM context.
 * **FR-37 Smart spacing:** before inserting, the text around the caret is read (UI Automation); casing (lowercase common words mid-sentence; never "I", names, acronyms), separating space, list on its own line, no doubled punctuation, no period when the sentence continues after the cursor. Unsupported apps fall back to v1 behaviour.
 * **FR-38** Password fields are detected through UI Automation (browsers included) and never receive text.
 * **FR-39 Multilingual:** `asr.language` = `en` (English model), `auto` or a locale code (multilingual model, 40 locales).
@@ -98,10 +99,11 @@ text (see roadmap).
 | NFR-9 | Contained install | all files under the project folder | portable layout (`KEYNONE_HOME`) |
 | NFR-10 | Integrity | verify every download | pinned SHA-256 per file |
 | NFR-11 | Robustness | a crash never orphans processes | kill-on-close job objects |
-| NFR-12 | Quality gates | tests, lint, types | 250+ tests, ruff, mypy clean |
+| NFR-12 | Quality gates | tests, lint, types | 640+ tests (incl. the 343-case stress set), ruff, mypy clean |
 | NFR-13 | English unchanged by the extras | identical output to v1 | identical on all 6 test recordings; eval 34/34 |
 | NFR-14 | Smart-spacing cost at insertion | ≤ 50 ms | ~7 ms per UIA query (after background warm-up) |
-| NFR-15 | Speak-to-edit, 80-word paragraph | ≤ 5 s CPU, ≤ 1.5 s GPU | 2.9–3.5 s CPU, 0.5–0.7 s GPU |
+| NFR-15 | Speak-to-edit, typical instruction | ≤ 2 s CPU, ≤ 1 s GPU | median 0.6 s CPU, 0.2 s GPU (cached prompt) |
+| NFR-16 | Cleanup quality on adversarial dictation | no regression | stress set: 343/343 punctuated (rules only); 94–98 % on real recognizer output (5 voices) |
 
 ## 2.5 Architecture
 
@@ -171,3 +173,4 @@ The only optional exception is `keynone autostart enable` (Startup shortcut).
 | AC-9 | Speak-to-edit rewrites a real selection with the local LLM | `tests/test_desktop_extras.py` | ✅ |
 | AC-10 | Multilingual transcription + cleanup + translation | `keynone transcribe --language auto [--translate-to English]` on sample recordings | ✅ |
 | AC-11 | GPU acceleration with CPU fallback | `keynone bench cleanup --gpu auto`, unit test for fallback | ✅ |
+| AC-12 | Adversarial dictation (fillers, repetitions, corrections, commands, lists) | `tests/test_dictation_stress.py`; `scripts/stress_test.py text/audio/edit` | ✅ |

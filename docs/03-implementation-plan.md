@@ -12,6 +12,7 @@
 | 5. Lifecycle | Dormant listener, on-demand engine, warm period / strict mode, dry-run, stop, autostart | ✅ |
 | 6. Quality | 160+ unit tests, engine IPC integration test, opt-in desktop tests, ruff + mypy clean, end-to-end runs on synthesized speech | ✅ |
 | 7. Extras (v0.2) | Speak-to-edit, smart spacing + UIA password detection, multilingual speech + language-aware cleanup + translation, optional GPU (Vulkan) with CPU fallback | ✅ see doc 01 §1.6 |
+| 8. Stress test & hardening | 352-case adversarial corpus, real-recognizer replay with 5 voices, correction grammar, list and pause handling, alignment guard, quiet-microphone normalizer | ✅ see doc 01 §1.7 |
 
 ## 3.2 Your 5-minute verification (real voice)
 
@@ -68,6 +69,8 @@ If your accent or vocabulary trips the recognizer, add names/terms to
 | Integration | Real engine process driven over IPC (headless, dry run) | `tests/test_engine_ipc.py` (needs models) |
 | Desktop (opt-in) | Paste/type into own text box + clipboard restore; mic capture; listener session; smart spacing; speak-to-edit with the real LLM | `KEYNONE_DESKTOP_TESTS=1` |
 | Multilingual | Language detection, per-language rules/cues, strict guard, translation routing; sample recordings via `transcribe --language auto` | `tests/test_language.py`, `tests/test_multilingual.py` |
+| Stress (adversarial) | 352 dictations × 4 recognizer styles, rules only and with the LLM; the same cases spoken by 5 voices through the real recognizer; 24 speak-to-edit instructions. The rules-only part runs in every `pytest` | `tests/test_dictation_stress.py`, `scripts/stress_test.py` (doc 01 §1.7) |
+| Microphone level | Level normalizer: normal and moderately quiet speech untouched, quiet speech lifted, silence and sudden loud speech not pumped | `tests/test_audio_level.py` |
 | End-to-end | Synthesized speech, real-time playback, live-lag + latency metrics | `scripts/make_test_audio.py` + `keynone transcribe --realtime` |
 
 Rule for changes: every bug found end-to-end gets a regression test
