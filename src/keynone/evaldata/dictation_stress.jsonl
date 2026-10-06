@@ -1,0 +1,253 @@
+{"id": "fil-um-start", "cat": "filler", "say": ["Um, I think we should start."], "expect": "I think we should start."}
+{"id": "fil-um-uh-mid", "cat": "filler", "say": ["So um, the meeting is uh at noon."], "expect": "So the meeting is at noon."}
+{"id": "fil-stack-question", "cat": "filler", "say": ["Uh, um, can you hear me?"], "expect": "Can you hear me?"}
+{"id": "fil-mid-commas", "cat": "filler", "say": ["I was, uh, going to call you."], "expect": "I was going to call you."}
+{"id": "fil-er-start", "cat": "filler", "say": ["Er, the report is ready."], "expect": "The report is ready."}
+{"id": "fil-hmm", "cat": "filler", "say": ["Hmm, let me think about it."], "expect": "Let me think about it."}
+{"id": "fil-double", "cat": "filler", "say": ["We need, uh, uh, more time."], "expect": "We need more time."}
+{"id": "fil-erm", "cat": "filler", "say": ["Erm, could you send me the file?"], "expect": "Could you send me the file?"}
+{"id": "fil-end", "cat": "filler", "say": ["Let's go with the blue one, um."], "expect": "Let's go with the blue one."}
+{"id": "fil-between-sentences", "cat": "filler", "say": ["Thanks for coming.", "Um.", "See you tomorrow."], "expect": "Thanks for coming. See you tomorrow."}
+{"id": "fil-only", "cat": "filler", "say": ["Um, uh, hmm."], "expect": ""}
+{"id": "fil-pause-mid", "cat": "filler", "say": ["The plan is to, um", "launch on Friday."], "expect": "The plan is to launch on Friday."}
+{"id": "fil-ah", "cat": "filler", "say": ["Ah, I see what you mean."], "expect": "I see what you mean."}
+{"id": "fil-um-um", "cat": "filler", "say": ["Um um, the server is down."], "expect": "The server is down."}
+{"id": "fil-uh-and", "cat": "filler", "say": ["Bring the chips and uh the salsa."], "expect": "Bring the chips and the salsa."}
+{"id": "fil-you-know-commas", "cat": "filler", "say": ["It's, you know, a small change."], "expect": "It's a small change."}
+{"id": "fil-like-commas", "cat": "filler", "say": ["I was, like, really surprised by the results."], "expect": "I was really surprised by the results."}
+{"id": "fil-you-know-start", "cat": "filler", "say": ["You know, I think it's fine."], "expect": "I think it's fine."}
+{"id": "fil-soft-mix", "cat": "filler", "llm": true, "say": ["So, like, I was thinking we could, you know, try again."], "expect": "So I was thinking we could try again.", "alt": ["I was thinking we could try again."]}
+{"id": "fil-you-know-bare", "cat": "filler", "llm": true, "say": ["I think we should you know focus on the onboarding first."], "expect": "I think we should focus on the onboarding first."}
+{"id": "fil-like-bare", "cat": "filler", "llm": true, "say": ["I was like really tired after the trip."], "expect": "I was really tired after the trip."}
+{"id": "fil-i-mean-start", "cat": "filler", "llm": true, "say": ["I mean, it's not a big deal."], "expect": "It's not a big deal.", "alt": ["I mean, it's not a big deal."]}
+{"id": "fil-basically", "cat": "filler", "llm": true, "say": ["Basically, we need more servers."], "expect": "We need more servers.", "alt": ["Basically, we need more servers."]}
+{"id": "fil-long-mix", "cat": "filler", "llm": true, "say": ["Okay so um basically the plan is uh to launch on Friday you know and um then we'll see."], "expect": "Okay, so the plan is to launch on Friday, and then we'll see.", "must": ["plan is to launch on Friday", "then we'll see"], "must_not": [" um", " uh", "you know", "basically"]}
+{"id": "fil-trap-like-verb", "cat": "filler", "say": ["I like the new design."], "expect": "I like the new design."}
+{"id": "fil-trap-like-approx", "cat": "filler", "say": ["It's like five miles away."], "expect": "It's like five miles away."}
+{"id": "fil-trap-umbrella", "cat": "filler", "say": ["Umbrella sales are up this summer."], "expect": "Umbrella sales are up this summer."}
+{"id": "fil-trap-er-acronym", "cat": "filler", "say": ["Take him to the ER right now."], "expect": "Take him to the ER right now."}
+{"id": "fil-trap-do-you-know", "cat": "filler", "say": ["Do you know the answer?"], "expect": "Do you know the answer?"}
+{"id": "fil-trap-you-know-what-i-mean", "cat": "filler", "say": ["Do you know what I mean?"], "expect": "Do you know what I mean?"}
+{"id": "rep-i-i", "cat": "repetition", "say": ["I I think so."], "expect": "I think so."}
+{"id": "rep-the-the", "cat": "repetition", "say": ["The the meeting is at five."], "expect": "The meeting is at five."}
+{"id": "rep-triple", "cat": "repetition", "say": ["We we we should go."], "expect": "We should go."}
+{"id": "rep-phrase", "cat": "repetition", "say": ["We need to, we need to talk."], "expect": "We need to talk."}
+{"id": "rep-long-restart", "cat": "repetition", "say": ["I want to go to the, I want to go to the store."], "expect": "I want to go to the store."}
+{"id": "rep-question", "cat": "repetition", "say": ["Can you, can you hear me?"], "expect": "Can you hear me?"}
+{"id": "rep-its", "cat": "repetition", "say": ["It's it's fine."], "expect": "It's fine."}
+{"id": "rep-pause", "cat": "repetition", "say": ["I want to", "I want to go home."], "expect": "I want to go home."}
+{"id": "rep-filler-between", "cat": "repetition", "say": ["The, uh, the report is late."], "expect": "The report is late."}
+{"id": "rep-two-places", "cat": "repetition", "say": ["Check the the logs and the the config."], "expect": "Check the logs and the config."}
+{"id": "rep-on-on", "cat": "repetition", "say": ["Let's meet on, on Monday."], "expect": "Let's meet on Monday."}
+{"id": "rep-restart-filler", "cat": "repetition", "say": ["We should, uh, we should probably wait."], "expect": "We should probably wait."}
+{"id": "rep-and-and", "cat": "repetition", "say": ["We bought apples and and pears."], "expect": "We bought apples and pears."}
+{"id": "rep-is-is", "cat": "repetition", "say": ["It is is broken."], "expect": "It is broken."}
+{"id": "rep-to-to", "cat": "repetition", "say": ["Send it to to Sarah."], "expect": "Send it to Sarah."}
+{"id": "rep-restart-change", "cat": "repetition", "llm": true, "say": ["I think we should, I think we must leave now."], "expect": "I think we must leave now."}
+{"id": "rep-trap-that-that", "cat": "repetition", "say": ["He said that that was fine."], "expect": "He said that that was fine."}
+{"id": "rep-trap-very", "cat": "repetition", "say": ["It was very very good."], "expect": "It was very very good."}
+{"id": "rep-trap-really", "cat": "repetition", "say": ["That's really really cool."], "expect": "That's really really cool."}
+{"id": "rep-trap-bye", "cat": "repetition", "say": ["Bye bye, see you soon."], "expect": "Bye bye, see you soon."}
+{"id": "rep-trap-had-had", "cat": "repetition", "say": ["I had had enough."], "expect": "I had had enough."}
+{"id": "rep-trap-phone", "cat": "repetition", "text_only": true, "say": ["My number is five five five, one two one two."], "expect": "My number is five five five, one two one two."}
+{"id": "rep-trap-what-is-is", "cat": "repetition", "say": ["What it is is a bug."], "expect": "What it is is a bug."}
+{"id": "rep-trap-come-on", "cat": "repetition", "say": ["Come on, come on, we're late."], "expect": "Come on, come on, we're late."}
+{"id": "rep-trap-long-long", "cat": "repetition", "say": ["That was a long long time ago."], "expect": "That was a long long time ago."}
+{"id": "rep-trap-parallel", "cat": "repetition", "say": ["We went to the park and we went to the beach."], "expect": "We went to the park and we went to the beach."}
+{"id": "rep-trap-many-many", "cat": "repetition", "say": ["Many many thanks for your help."], "expect": "Many many thanks for your help."}
+{"id": "cor-nowait-commas", "cat": "correction", "say": ["Let's meet at three, no wait, four PM."], "expect": "Let's meet at 4 PM."}
+{"id": "cor-nowait-bare", "cat": "correction", "say": ["Let's meet at three no wait four PM at the cafe."], "expect": "Let's meet at 4 PM at the cafe."}
+{"id": "cor-imean-name", "cat": "correction", "say": ["Send it to John, I mean Sarah."], "expect": "Send it to Sarah."}
+{"id": "cor-imean-bare-cont", "cat": "correction", "say": ["Send it to John I mean Sarah by Friday."], "expect": "Send it to Sarah by Friday."}
+{"id": "cor-sorry-day", "cat": "correction", "say": ["The meeting is on Monday, sorry, Tuesday."], "expect": "The meeting is on Tuesday."}
+{"id": "cor-sorry-day-bare", "cat": "correction", "say": ["The meeting is on Monday sorry Tuesday."], "expect": "The meeting is on Tuesday."}
+{"id": "cor-no-day-bare", "cat": "correction", "say": ["I'll see you on Monday no Tuesday."], "expect": "I'll see you on Tuesday."}
+{"id": "cor-no-number-bare", "cat": "correction", "say": ["We need two no three chairs."], "expect": "We need three chairs."}
+{"id": "cor-sorry-people", "cat": "correction", "say": ["Book a table for four, sorry, five people."], "expect": "Book a table for five people."}
+{"id": "cor-money", "cat": "correction", "say": ["It costs fifty dollars, no, sixty dollars."], "expect": "It costs sixty dollars."}
+{"id": "cor-money-pause", "cat": "correction", "say": ["It costs fifty dollars", "no sixty dollars."], "expect": "It costs sixty dollars."}
+{"id": "cor-actually-make-that", "cat": "correction", "say": ["Call me tomorrow morning, actually, make that tomorrow evening."], "expect": "Call me tomorrow evening."}
+{"id": "cor-actually-make-that-day", "cat": "correction", "say": ["Let's plan the launch for Thursday, actually make that Friday."], "expect": "Let's plan the launch for Friday."}
+{"id": "cor-or-rather", "cat": "correction", "say": ["The deadline is Monday, or rather Tuesday morning."], "expect": "The deadline is Tuesday morning."}
+{"id": "cor-cross-sorry-meant", "cat": "correction", "say": ["I'll be there by six.", "Sorry, I meant seven."], "expect": "I'll be there by seven."}
+{"id": "cor-cross-make-it", "cat": "correction", "say": ["We're flying out on the twelfth.", "Actually, make it the fourteenth."], "expect": "We're flying out on the fourteenth."}
+{"id": "cor-cross-no-wait-verb", "cat": "correction", "say": ["Turn left at the light.", "No wait, turn right."], "expect": "Turn right at the light.", "alt": ["Turn right."]}
+{"id": "cor-no-the", "cat": "correction", "say": ["Meet me at the bakery, no, the museum."], "expect": "Meet me at the museum."}
+{"id": "cor-no-the-bare", "cat": "correction", "say": ["Meet me at the bakery no the museum."], "expect": "Meet me at the museum."}
+{"id": "cor-coffee-tea", "cat": "correction", "say": ["Grab coffee, no, tea for me."], "expect": "Grab tea for me."}
+{"id": "cor-hours", "cat": "correction", "say": ["The password expires in 24 hours, no, 48 hours."], "expect": "The password expires in 48 hours."}
+{"id": "cor-floor", "cat": "correction", "say": ["It's on the fifth floor, I mean the sixth floor."], "expect": "It's on the sixth floor."}
+{"id": "cor-no-scratch-inline", "cat": "correction", "say": ["I want to leave at seven thirty AM no scratch that six thirty AM tomorrow."], "expect": "I want to leave at 6:30 AM tomorrow."}
+{"id": "cor-no-scratch-cross", "cat": "correction", "say": ["I want to leave at seven thirty.", "No, scratch that, six thirty AM tomorrow.", "I hope the roads are clear."], "expect": "I want to leave at 6:30 AM tomorrow. I hope the roads are clear."}
+{"id": "cor-question-cross", "cat": "correction", "say": ["Why don't we meet at the bakery?", "No, the museum tomorrow morning."], "expect": "Why don't we meet at the museum tomorrow morning?"}
+{"id": "cor-time-expr-bare", "cat": "correction", "say": ["Let's meet tomorrow morning no tonight."], "expect": "Let's meet tonight."}
+{"id": "cor-time-expr-actually", "cat": "correction", "say": ["Let's meet tomorrow morning, actually tonight."], "expect": "Let's meet tonight."}
+{"id": "cor-volume", "cat": "correction", "say": ["Set the volume to seven no eight."], "expect": "Set the volume to eight."}
+{"id": "cor-make-that", "cat": "correction", "say": ["Order three pizzas, no, make that four."], "expect": "Order four pizzas."}
+{"id": "cor-verb-swap", "cat": "correction", "say": ["Email Mike, no, text Mike."], "expect": "Text Mike."}
+{"id": "cor-multi", "cat": "correction", "say": ["Let's meet Monday no Tuesday at three no four."], "expect": "Let's meet Tuesday at four."}
+{"id": "cor-start-cue", "cat": "correction", "say": ["No wait, let's meet at four."], "expect": "Let's meet at four.", "alt": ["No wait, let's meet at four."]}
+{"id": "cor-in-question", "cat": "correction", "say": ["Can you call me at five, sorry, six?"], "expect": "Can you call me at six?"}
+{"id": "cor-name-cont", "cat": "correction", "say": ["Tell Priya, I mean Ananya, that the deadline moved."], "expect": "Tell Ananya that the deadline moved."}
+{"id": "cor-date", "cat": "correction", "say": ["Book the flight for June fifth, no, June sixth."], "expect": "Book the flight for June sixth."}
+{"id": "cor-kilos", "cat": "correction", "say": ["It weighs two kilos, no, three kilos."], "expect": "It weighs three kilos."}
+{"id": "cor-red-blue", "cat": "correction", "say": ["We need the red one, no, the blue one."], "expect": "We need the blue one."}
+{"id": "cor-long-distance", "cat": "correction", "say": ["Please send the quarterly report to the finance team by Friday, no wait, by Thursday."], "expect": "Please send the quarterly report to the finance team by Thursday."}
+{"id": "cor-oclock", "cat": "correction", "say": ["I'll take the three o'clock, no, the four o'clock train."], "expect": "I'll take the 4 o'clock train."}
+{"id": "cor-room", "cat": "correction", "say": ["The meeting is in room 204, no wait, room 205."], "expect": "The meeting is in room 205."}
+{"id": "cor-or-rather-cross", "cat": "correction", "say": ["Let's start at nine.", "Or rather, nine thirty."], "expect": "Let's start at nine thirty."}
+{"id": "cor-am-pm", "cat": "correction", "say": ["The flight leaves at ten AM, sorry, ten PM."], "expect": "The flight leaves at 10 PM."}
+{"id": "cor-next-day", "cat": "correction", "say": ["The kickoff is next Monday, actually next Tuesday."], "expect": "The kickoff is next Tuesday."}
+{"id": "cor-question-noun", "cat": "correction", "say": ["Can you send me the file, no, the folder?"], "expect": "Can you send me the folder?"}
+{"id": "cor-city", "cat": "correction", "say": ["Ship it to Boston, no, Denver."], "expect": "Ship it to Denver."}
+{"id": "cor-filler-mix", "cat": "correction", "say": ["Let's meet at, um, three, uh, no, four."], "expect": "Let's meet at four."}
+{"id": "cor-history-library", "cat": "correction", "say": ["Why don't we plan to meet at the cafe near the station?", "No, meet at the gallery tomorrow morning.", "No, tomorrow night.", "Let's take a break, shall we?"], "expect": "Why don't we plan to meet at the gallery tomorrow night? Let's take a break, shall we?"}
+{"id": "cor-history-scratch-chain", "cat": "correction", "say": ["Why don't we meet tomorrow morning no scratch that day after tomorrow morning at the gallery no scratch that at the museum?"], "expect": "Why don't we meet day after tomorrow morning at the museum?"}
+{"id": "cor-you-know-what-scratch", "cat": "correction", "say": ["Let's start at two fifteen PM.", "Uh, you know what, scratch that, let's start at three PM.", "Alright, see you then."], "expect": "Let's start at 3 PM. Alright, see you then."}
+{"id": "cor-engineers", "cat": "correction", "say": ["We should hire two engineers, no, three engineers and one designer."], "expect": "We should hire three engineers and one designer."}
+{"id": "cor-oops", "cat": "correction", "say": ["The total is forty dollars, oops, forty five dollars."], "expect": "The total is forty five dollars."}
+{"id": "cor-correction-word", "cat": "correction", "say": ["The meeting is in room 12, correction, room 14."], "expect": "The meeting is in room 14."}
+{"id": "cor-make-it-cross", "cat": "correction", "say": ["Set the alarm for six.", "Make it six fifteen."], "expect": "Set the alarm for six fifteen."}
+{"id": "cor-i-meant-cross-name", "cat": "correction", "say": ["Call Ravi tomorrow.", "I meant Rohan."], "expect": "Call Rohan tomorrow."}
+{"id": "cor-cross-its-at", "cat": "correction", "say": ["The meeting is at three.", "No wait, it's at four."], "expect": "The meeting is at four."}
+{"id": "cor-day-continuation", "cat": "correction", "say": ["Book the room for Tuesday at two no wait Wednesday at three and invite the whole team."], "expect": "Book the room for Wednesday at three and invite the whole team."}
+{"id": "cor-day-substitute", "cat": "correction", "say": ["I'll call you Monday about the budget, no, Tuesday."], "expect": "I'll call you Tuesday about the budget."}
+{"id": "cor-cross-restate", "cat": "correction", "say": ["I'll call you tomorrow.", "No wait, I'll call you tonight."], "expect": "I'll call you tonight."}
+{"id": "cor-just", "cat": "correction", "llm": true, "say": ["Invite Alex and Jordan, actually just Jordan."], "expect": "Invite just Jordan.", "alt": ["Invite Jordan."]}
+{"id": "cor-trap-no-way", "cat": "correction", "say": ["There's no way we can finish today."], "expect": "There's no way we can finish today."}
+{"id": "cor-trap-no-idea", "cat": "correction", "say": ["I have no idea what happened."], "expect": "I have no idea what happened."}
+{"id": "cor-trap-no-problem", "cat": "correction", "say": ["No problem, I'll handle it."], "expect": "No problem, I'll handle it."}
+{"id": "cor-trap-no-one", "cat": "correction", "say": ["No one showed up to the meeting."], "expect": "No one showed up to the meeting."}
+{"id": "cor-trap-im-sorry", "cat": "correction", "say": ["I'm sorry I missed your call."], "expect": "I'm sorry I missed your call."}
+{"id": "cor-trap-sorry-for", "cat": "correction", "say": ["Sorry for the late reply."], "expect": "Sorry for the late reply."}
+{"id": "cor-trap-actually", "cat": "correction", "say": ["I actually enjoyed the movie."], "expect": "I actually enjoyed the movie."}
+{"id": "cor-trap-i-mean-it", "cat": "correction", "say": ["I mean it, this is important."], "expect": "I mean it, this is important."}
+{"id": "cor-trap-rather", "cat": "correction", "say": ["I'd rather stay home tonight."], "expect": "I'd rather stay home tonight."}
+{"id": "cor-trap-make-it", "cat": "correction", "say": ["We can make it work."], "expect": "We can make it work."}
+{"id": "cor-trap-scratch", "cat": "correction", "say": ["We built it from scratch."], "expect": "We built it from scratch."}
+{"id": "cor-trap-wait", "cat": "correction", "say": ["Please wait for me at the gate."], "expect": "Please wait for me at the gate."}
+{"id": "cor-trap-no-thanks", "cat": "correction", "say": ["Do you want coffee? No thanks."], "expect": "Do you want coffee? No thanks."}
+{"id": "cor-trap-answer-no", "cat": "correction", "say": ["The answer is no."], "expect": "The answer is no."}
+{"id": "cor-trap-said-no", "cat": "correction", "say": ["I said no to the offer."], "expect": "I said no to the offer."}
+{"id": "cor-trap-no-more", "cat": "correction", "say": ["It costs no more than ten dollars."], "expect": "It costs no more than ten dollars."}
+{"id": "cor-trap-what-i-mean", "cat": "correction", "say": ["You know what I mean."], "expect": "You know what I mean."}
+{"id": "cor-trap-or", "cat": "correction", "say": ["Is it Monday or Tuesday?"], "expect": "Is it Monday or Tuesday?"}
+{"id": "cor-trap-actually-clause", "cat": "correction", "say": ["Let's go to the beach, actually the park is closer."], "expect": "Let's go to the beach, actually the park is closer."}
+{"id": "cor-trap-no-time", "cat": "correction", "say": ["We have no time to waste."], "expect": "We have no time to waste."}
+{"id": "cor-trap-didnt", "cat": "correction", "say": ["Did you finish it? No, I didn't."], "expect": "Did you finish it? No, I didn't."}
+{"id": "cor-trap-did-i", "cat": "correction", "say": ["Did I say that? No, I didn't."], "expect": "Did I say that? No, I didn't."}
+{"id": "cor-trap-no-five-star", "cat": "correction", "say": ["There were no five star reviews."], "expect": "There were no five star reviews."}
+{"id": "cor-trap-sorry-to-hear", "cat": "correction", "say": ["I'm so sorry to hear that."], "expect": "I'm so sorry to hear that."}
+{"id": "cor-trap-say-sorry", "cat": "correction", "say": ["Please say sorry to Anna."], "expect": "Please say sorry to Anna."}
+{"id": "cor-trap-no-longer", "cat": "correction", "say": ["The office is no longer open on Sundays."], "expect": "The office is no longer open on Sundays."}
+{"id": "cor-trap-no-matter", "cat": "correction", "say": ["No matter what happens, stay calm."], "expect": "No matter what happens, stay calm."}
+{"id": "cor-trap-said-no-count", "cat": "correction", "say": ["Two people said yes and three said no."], "expect": "Two people said yes and three said no."}
+{"id": "cor-trap-no-kidding", "cat": "correction", "say": ["I can't wait, no kidding."], "expect": "I can't wait, no kidding."}
+{"id": "cor-trap-no-rush", "cat": "correction", "say": ["Thanks, no rush."], "expect": "Thanks, no rush."}
+{"id": "cor-trap-no-worries", "cat": "correction", "say": ["I'll do it later, no worries."], "expect": "I'll do it later, no worries."}
+{"id": "cor-trap-late-sorry", "cat": "correction", "say": ["We're late, sorry, traffic was bad."], "expect": "We're late, sorry, traffic was bad."}
+{"id": "cor-trap-no-answer", "cat": "correction", "say": ["Is the shop open on Sunday? No, it's closed."], "expect": "Is the shop open on Sunday? No, it's closed."}
+{"id": "cmd-newline-standalone", "cat": "command", "say": ["First line.", "New line.", "Second line."], "expect": "First line.\nSecond line."}
+{"id": "cmd-paragraph-greeting", "cat": "command", "say": ["Dear team,", "new paragraph", "the build is green."], "expect": "Dear team,\n\nThe build is green."}
+{"id": "cmd-paragraph-inline-comma", "cat": "command", "say": ["So this is the opening paragraph, new paragraph this is the closing paragraph."], "expect": "So this is the opening paragraph.\n\nThis is the closing paragraph."}
+{"id": "cmd-newline-inline-bare", "cat": "command", "say": ["the first point new line the second point"], "expect": "The first point\nThe second point", "alt": ["The first point.\nThe second point."]}
+{"id": "cmd-paragraph-leading", "cat": "command", "say": ["New paragraph.", "Thanks for the update."], "expect": "\n\nThanks for the update."}
+{"id": "cmd-paragraph-trailing", "cat": "command", "say": ["Thanks for the update.", "New paragraph."], "expect": "Thanks for the update.\n\n"}
+{"id": "cmd-next-paragraph", "cat": "command", "say": ["The traffic was terrible.", "Next paragraph.", "Wow, goodbye."], "expect": "The traffic was terrible.\n\nWow, goodbye."}
+{"id": "cmd-double-paragraph", "cat": "command", "say": ["Hello.", "New paragraph.", "New paragraph.", "World."], "expect": "Hello.\n\nWorld."}
+{"id": "cmd-paragraphs-misheard", "cat": "command", "text_only": true, "say": ["Hello there.", "New paragraphs.", "How are you?"], "expect": "Hello there.\n\nHow are you?"}
+{"id": "cmd-paragraph-inline-bare", "cat": "command", "say": ["the deadline moved to Friday new paragraph please update the plan"], "expect": "The deadline moved to Friday.\n\nPlease update the plan."}
+{"id": "cmd-newline-inline-sentences", "cat": "command", "say": ["Thanks for the update. New line. Let me know if anything changes."], "expect": "Thanks for the update.\nLet me know if anything changes."}
+{"id": "cmd-trap-line-of-products", "cat": "command", "say": ["We need a new line of products."], "expect": "We need a new line of products."}
+{"id": "cmd-trap-next-paragraph-read", "cat": "command", "say": ["Read the next paragraph carefully."], "expect": "Read the next paragraph carefully."}
+{"id": "cmd-trap-new-paragraph-about", "cat": "command", "say": ["Add a new paragraph about pricing."], "expect": "Add a new paragraph about pricing."}
+{"id": "cmd-trap-draw-line", "cat": "command", "say": ["Draw a new line on the chart."], "expect": "Draw a new line on the chart."}
+{"id": "cmd-trap-line-manager", "cat": "command", "say": ["The new line manager starts Monday."], "expect": "The new line manager starts Monday."}
+{"id": "cmd-trap-our-new-line", "cat": "command", "say": ["Our new line launches in May."], "expect": "Our new line launches in May."}
+{"id": "cmd-scratch-standalone", "cat": "command", "say": ["I'll call you tomorrow.", "Scratch that.", "I'll call you tonight."], "expect": "I'll call you tonight."}
+{"id": "cmd-scratch-lead", "cat": "command", "say": ["I'll call you tomorrow.", "Scratch that, I'll call you tonight."], "expect": "I'll call you tonight."}
+{"id": "cmd-scratch-lead-imperative", "cat": "command", "say": ["I'll call you tomorrow.", "Scratch that, call me tonight."], "expect": "Call me tonight."}
+{"id": "cmd-scratch-sentences", "cat": "command", "say": ["Hi Maya, Leo here.", "Really really nice photos.", "Scratch that.", "New paragraph.", "Come on, turn the lights on."], "expect": "Hi Maya, Leo here.\n\nCome on, turn the lights on."}
+{"id": "cmd-scratch-fragments", "cat": "command", "say": ["Hi Maya, Leo here", "really really nice photos", "scratch that", "new paragraph", "come on, turn the lights on"], "expect": "Hi Maya, Leo here.\n\nCome on, turn the lights on.", "alt": ["Hi Maya, Leo here,\n\nCome on, turn the lights on."]}
+{"id": "cmd-delete-that", "cat": "command", "say": ["The budget is final.", "Delete that.", "The budget is a draft."], "expect": "The budget is a draft."}
+{"id": "cmd-strike-that", "cat": "command", "say": ["We lost the deal.", "Strike that.", "We won the deal."], "expect": "We won the deal."}
+{"id": "cmd-scratch-first", "cat": "command", "say": ["Scratch that.", "Hello there."], "expect": "Hello there."}
+{"id": "cmd-no-scratch-standalone", "cat": "command", "say": ["Let's meet at five.", "No, scratch that.", "Let's meet at six."], "expect": "Let's meet at six."}
+{"id": "cmd-scratch-twice", "cat": "command", "say": ["One more thing.", "It's late.", "Scratch that.", "Scratch that.", "Good night."], "expect": "Good night."}
+{"id": "cmd-paragraph-greeting-bare", "cat": "command", "say": ["Hi Sarah", "new paragraph", "thanks for the update"], "expect": "Hi Sarah,\n\nThanks for the update."}
+{"id": "cmd-cross-that", "cat": "command", "text_only": true, "say": ["I'll call you tomorrow.", "Cross that.", "I'll call you tonight."], "expect": "I'll call you tonight."}
+{"id": "cmd-scratch-inline-restate", "cat": "command", "say": ["Let's keep testing it and see how it plays out, scratch that, see how it works."], "expect": "Let's keep testing it and see how it works."}
+{"id": "cmd-scratch-end-of-fragment", "cat": "command", "say": ["The plan is ready.", "The budget is too high scratch that", "Let's talk tomorrow."], "expect": "The plan is ready. Let's talk tomorrow."}
+{"id": "cmd-newline-list-like", "cat": "command", "say": ["Milk", "new line", "eggs", "new line", "bread"], "expect": "Milk\nEggs\nBread"}
+{"id": "cmd-signature", "cat": "command", "say": ["See you on Monday.", "New paragraph.", "Best regards", "new line", "Aamir"], "expect": "See you on Monday.\n\nBest regards\nAamir"}
+{"id": "cmd-trap-delete-file", "cat": "command", "say": ["Please delete that file."], "expect": "Please delete that file."}
+{"id": "cmd-trap-scratch-itch", "cat": "command", "say": ["We need to scratch that itch."], "expect": "We need to scratch that itch."}
+{"id": "cmd-trap-cross-bridge", "cat": "command", "say": ["We'll cross that bridge when we get there."], "expect": "We'll cross that bridge when we get there."}
+{"id": "cmd-trap-strike-deal", "cat": "command", "say": ["They want to strike that deal soon."], "expect": "They want to strike that deal soon."}
+{"id": "lst-ordinal-sentences", "cat": "list", "say": ["For the trip we need three things.", "First, book the flights.", "Second, reserve the hotel.", "And third, rent a car."], "expect": "For the trip we need three things:\n1. Book the flights\n2. Reserve the hotel\n3. Rent a car"}
+{"id": "lst-ordinal-run", "cat": "list", "say": ["We need three things first book the flights second reserve the hotel third rent a car."], "expect": "We need three things:\n1. Book the flights\n2. Reserve the hotel\n3. Rent a car"}
+{"id": "lst-number-pauses", "cat": "list", "say": ["We need three things for the weekend.", "Number one", "tickets", "number two", "a map", "and finally number three", "snacks"], "expect": "We need three things for the weekend:\n1. Tickets\n2. A map\n3. Snacks"}
+{"id": "lst-cardinals", "cat": "list", "say": ["For the picnic we need one the basket two the blanket three the plates and four the juice."], "expect": "For the picnic we need:\n1. The basket\n2. The blanket\n3. The plates\n4. The juice"}
+{"id": "lst-count-commas", "cat": "list", "say": ["For our workshop tomorrow we need five things, the slides, the badges, the markers, the laptops and the snacks."], "expect": "For our workshop tomorrow we need five things:\n1. The slides\n2. The badges\n3. The markers\n4. The laptops\n5. The snacks"}
+{"id": "lst-count-bare", "cat": "list", "say": ["We need four things the laptop, the charger, the mouse and the bag."], "expect": "We need four things:\n1. The laptop\n2. The charger\n3. The mouse\n4. The bag"}
+{"id": "lst-make-a-list", "cat": "list", "say": ["Make a list: eggs, milk, bread and cheese."], "expect": "Make a list:\n1. Eggs\n2. Milk\n3. Bread\n4. Cheese", "alt": ["Make a list:\n- Eggs\n- Milk\n- Bread\n- Cheese"]}
+{"id": "lst-bullets", "cat": "list", "say": ["Shopping list: bullet point eggs, bullet point milk, bullet point coffee."], "expect": "Shopping list:\n- Eggs\n- Milk\n- Coffee"}
+{"id": "lst-bullets-bare", "cat": "list", "say": ["bullet eggs bullet milk bullet coffee"], "expect": "- Eggs\n- Milk\n- Coffee"}
+{"id": "lst-steps", "cat": "list", "say": ["To reset it, step one unplug the router, step two wait ten seconds, step three plug it back in."], "expect": "To reset it:\n1. Unplug the router\n2. Wait ten seconds\n3. Plug it back in"}
+{"id": "lst-firstly", "cat": "list", "say": ["Firstly, we cut costs.", "Secondly, we hire.", "Finally, we grow."], "expect": "1. We cut costs\n2. We hire\n3. We grow"}
+{"id": "lst-outro", "cat": "list", "say": ["We need three things.", "First, eggs.", "Second, milk.", "Third, bread.", "That's all for now."], "expect": "We need three things:\n1. Eggs\n2. Milk\n3. Bread\nThat's all for now."}
+{"id": "lst-first-of-all", "cat": "list", "say": ["First of all, thank everyone.", "Second, review the numbers.", "Third, plan the next steps."], "expect": "1. Thank everyone\n2. Review the numbers\n3. Plan the next steps"}
+{"id": "lst-two-items", "cat": "list", "say": ["First, call the bank.", "Second, email the lawyer."], "expect": "1. Call the bank\n2. Email the lawyer"}
+{"id": "lst-and-finally", "cat": "list", "say": ["Number one tickets, number two a map, and finally snacks."], "expect": "1. Tickets\n2. A map\n3. Snacks"}
+{"id": "lst-then-finally", "cat": "list", "say": ["First, open the app.", "Then, log in.", "Finally, click save."], "expect": "1. Open the app\n2. Log in\n3. Click save"}
+{"id": "lst-history-friends", "cat": "list", "say": ["I have five guests number one, Alex number two Sam number three Jordan number four my cousin and finally my neighbors."], "expect": "I have five guests:\n1. Alex\n2. Sam\n3. Jordan\n4. My cousin\n5. My neighbors"}
+{"id": "lst-history-three-things", "cat": "list", "say": ["We need to do three things this week to finish on time.", "Number one plan the work number two check the budget and number three keep it simple."], "expect": "We need to do three things this week to finish on time:\n1. Plan the work\n2. Check the budget\n3. Keep it simple"}
+{"id": "lst-marker-periods", "cat": "list", "text_only": true, "say": ["We need two things.", "Number one.", "Tickets.", "Number two.", "A map."], "expect": "We need two things:\n1. Tickets\n2. A map"}
+{"id": "lst-then-paragraph", "cat": "list", "say": ["Agenda.", "First, budget.", "Second, hiring.", "New paragraph.", "See you there."], "expect": "Agenda:\n1. Budget\n2. Hiring\n\nSee you there."}
+{"id": "lst-correction-inside", "cat": "list", "say": ["First, email the client.", "Second, update the deck, no wait, update the budget sheet.", "Third, book the room."], "expect": "1. Email the client\n2. Update the budget sheet\n3. Book the room"}
+{"id": "lst-fast-run", "cat": "list", "rate": "+35%", "say": ["The steps are first unplug it second wait a minute and third plug it back in."], "expect": "The steps are:\n1. Unplug it\n2. Wait a minute\n3. Plug it back in"}
+{"id": "lst-trap-first-time", "cat": "list", "say": ["It was my first time and the second attempt went much better."], "expect": "It was my first time and the second attempt went much better."}
+{"id": "lst-trap-first-come", "cat": "list", "say": ["First come, first served."], "expect": "First come, first served."}
+{"id": "lst-trap-finished-second", "cat": "list", "say": ["He finished first and I finished second."], "expect": "He finished first and I finished second."}
+{"id": "lst-trap-number-one-priority", "cat": "list", "say": ["Our number one priority is safety."], "expect": "Our number one priority is safety."}
+{"id": "lst-trap-pets", "cat": "list", "say": ["I have one dog, two cats and three fish."], "expect": "I have one dog, two cats and three fish."}
+{"id": "lst-trap-one-or-two", "cat": "list", "say": ["One or two things might change."], "expect": "One or two things might change."}
+{"id": "lst-trap-floors", "cat": "list", "say": ["The first and second floors are closed."], "expect": "The first and second floors are closed."}
+{"id": "lst-trap-single", "cat": "list", "say": ["First, let me say thanks for coming."], "expect": "First, let me say thanks for coming."}
+{"id": "lst-trap-count-prose", "cat": "list", "say": ["I have three kids, two dogs and a cat."], "expect": "I have three kids, two dogs and a cat."}
+{"id": "lst-trap-then-next", "cat": "list", "say": ["First we ate, then we went home and next day we left."], "expect": "First we ate, then we went home and next day we left."}
+{"id": "lst-trap-two-things", "cat": "list", "say": ["There are two things I love, coffee and music."], "expect": "There are two things I love, coffee and music.", "alt": ["There are two things I love:\n1. Coffee\n2. Music"]}
+{"id": "q-can-you", "cat": "question", "say": ["Can you send me the report before Friday?"], "expect": "Can you send me the report before Friday?"}
+{"id": "q-what-time", "cat": "question", "say": ["What time is the meeting?"], "expect": "What time is the meeting?"}
+{"id": "q-indirect", "cat": "question", "say": ["I wonder if you could help me with this."], "expect": "I wonder if you could help me with this."}
+{"id": "q-do-you", "cat": "question", "say": ["Do you have a minute?"], "expect": "Do you have a minute?"}
+{"id": "q-why-dont", "cat": "question", "say": ["Why don't we meet tomorrow?"], "expect": "Why don't we meet tomorrow?"}
+{"id": "q-tag-shall", "cat": "question", "say": ["Let's take a break, shall we?"], "expect": "Let's take a break, shall we?"}
+{"id": "q-tag-right", "cat": "question", "say": ["You're coming tonight, right?"], "expect": "You're coming tonight, right?"}
+{"id": "q-hows", "cat": "question", "say": ["How's it going?"], "expect": "How's it going?"}
+{"id": "q-exclaim-what", "cat": "question", "say": ["What a great idea."], "expect": "What a great idea."}
+{"id": "q-is-everything", "cat": "question", "say": ["Is everything okay?"], "expect": "Is everything okay?"}
+{"id": "q-are-we", "cat": "question", "say": ["Are we still on for lunch?"], "expect": "Are we still on for lunch?"}
+{"id": "q-two-sentences", "cat": "question", "say": ["The report is ready.", "Did you see it?"], "expect": "The report is ready. Did you see it?"}
+{"id": "q-have-you", "cat": "question", "say": ["Have you finished the report?"], "expect": "Have you finished the report?"}
+{"id": "q-would-you-mind", "cat": "question", "say": ["Would you mind closing the door?"], "expect": "Would you mind closing the door?"}
+{"id": "q-where-am-i", "cat": "question", "say": ["Where am I typing right now?"], "expect": "Where am I typing right now?"}
+{"id": "q-could-we", "cat": "question", "say": ["Could we push this to next week?"], "expect": "Could we push this to next week?"}
+{"id": "q-is-he", "cat": "question", "say": ["Is he joining the call?"], "expect": "Is he joining the call?"}
+{"id": "q-statement-how", "cat": "question", "say": ["How we do it matters."], "expect": "How we do it matters.", "alt": ["How we do it matters?"]}
+{"id": "fmt-time-thirty", "cat": "format", "say": ["Call me at four thirty PM."], "expect": "Call me at 4:30 PM."}
+{"id": "fmt-time-am", "cat": "format", "say": ["The call is at ten AM tomorrow."], "expect": "The call is at 10 AM tomorrow."}
+{"id": "fmt-oclock", "cat": "format", "say": ["Let's meet at nine o'clock."], "expect": "Let's meet at 9 o'clock."}
+{"id": "fmt-pause-sentences", "cat": "format", "say": ["Thanks for the update", "the build is green now"], "expect": "Thanks for the update. The build is green now."}
+{"id": "fmt-pause-mid", "cat": "format", "say": ["I talked to", "Sarah about the budget."], "expect": "I talked to Sarah about the budget."}
+{"id": "fmt-names-pauses", "cat": "format", "say": ["I invited Claude", "Gemini", "and Llama to the test."], "expect": "I invited Claude, Gemini and Llama to the test.", "alt": ["I invited Claude Gemini and Llama to the test."]}
+{"id": "fmt-name-new-sentence", "cat": "format", "say": ["Thanks for the update.", "Sarah will call you tomorrow."], "expect": "Thanks for the update. Sarah will call you tomorrow."}
+{"id": "fmt-greeting", "cat": "format", "say": ["Hi Sarah, hope you're well.", "The report is attached."], "expect": "Hi Sarah, hope you're well. The report is attached."}
+{"id": "fmt-capital-i", "cat": "format", "say": ["yesterday i think i'm done"], "expect": "Yesterday I think I'm done."}
+{"id": "fmt-long-run", "cat": "format", "llm": true, "say": ["The new office is bright and the coffee is great however the parking seems to be a problem for the whole team"], "expect": "The new office is bright and the coffee is great. However, the parking seems to be a problem for the whole team."}
+{"id": "mix-email", "cat": "mix", "say": ["Hi Priya", "new paragraph", "um so I wanted to let you know that the the release is moving to Thursday, no wait, Friday.", "New paragraph.", "Thanks."], "expect": "Hi Priya,\n\nSo I wanted to let you know that the release is moving to Friday.\n\nThanks."}
+{"id": "mix-list-correction-filler", "cat": "mix", "say": ["Um, for the launch we need three things.", "First, uh, the press release.", "Second, the the landing page.", "And third, the email, no, the newsletter."], "expect": "For the launch we need three things:\n1. The press release\n2. The landing page\n3. The newsletter"}
+{"id": "mix-scratch-list", "cat": "mix", "say": ["We need two things.", "First, milk.", "Scratch that.", "First, bread.", "Second, butter."], "expect": "We need two things:\n1. Bread\n2. Butter"}
+{"id": "mix-fast-correction", "cat": "mix", "rate": "+40%", "say": ["Book the room for Tuesday at two no wait Wednesday at three and invite the whole team."], "expect": "Book the room for Wednesday at three and invite the whole team."}
+{"id": "mix-fast-everything", "cat": "mix", "rate": "+40%", "say": ["Um so the the plan is uh we launch on Monday no Tuesday new paragraph first update the docs second email the team."], "expect": "So the plan is we launch on Tuesday.\n\n1. Update the docs\n2. Email the team"}
+{"id": "mix-chat-message", "cat": "mix", "say": ["Hey, are you free for lunch tomorrow?", "Maybe around one, no wait, one thirty?"], "expect": "Hey, are you free for lunch tomorrow? Maybe around one thirty?"}
