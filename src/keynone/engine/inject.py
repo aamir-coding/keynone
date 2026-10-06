@@ -44,7 +44,7 @@ class Inserter:
         return InsertResult("clipboard", False, f"{why} - copied, press Ctrl+V")
 
     def insert(self, text: str, profile: AppProfile, target: WindowInfo) -> InsertResult:
-        if not text.strip():
+        if not text.strip(" \t"):  # a spoken line break alone is something to insert
             return InsertResult("none", False, "Nothing to insert")
         if target.password_field:
             return InsertResult("none", False, "Password field - not inserted")

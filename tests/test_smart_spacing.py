@@ -41,6 +41,33 @@ def fit(text: str, before: str, after: str = "", style: str = "default",
         ("1. Intro\n2. Budget", "Agenda:\n", "", "1. Intro\n2. Budget"),
         # line start capitalizes even after lowercase text on the previous line
         ("thanks.", "see you\n", "", "Thanks. "),
+        # a closing quote is not an opening one: the next sentence gets its space
+        ("Then we left.", 'He said "yes."', "", " Then we left. "),
+        ("maybe.", 'Pick "', '"', "maybe"),
+        # after a comma or a question
+        ("We should go.", "Well,", "", " we should go. "),
+        ("Yes, it is.", "Is it ready?", "", " Yes, it is. "),
+        # common words lowercase mid-sentence, names don't
+        ("Honestly, it's fine.", "I think ", "", "honestly, it's fine. "),
+        ("Sarah said hi.", "and ", "", "Sarah said hi. "),
+        # a word inserted before the rest of the sentence: no period, one space
+        ("John.", "Call", " today.", " John"),
+        # several paragraphs dictated mid-line continue that line (only lists move down)
+        ("First point.\n\nSecond point.", "Intro.", "", " First point.\n\nSecond point. "),
+        ("We need two things:\n1. Bread\n2. Milk", "Hello.", "",
+         " We need two things:\n1. Bread\n2. Milk"),
+        # "new paragraph" said first: only the breaks the text before still needs
+        ("\n\nThanks.", "Hello.", "", "\n\nThanks. "),
+        ("\n\nThanks.", "Hello.\n", "", "\nThanks. "),
+        ("\n\nThanks.", "Hello.\n\n", "", "Thanks. "),
+        ("\n\nThanks.", "", "", "Thanks. "),
+        # "new paragraph" said last: the cursor ends on the new line, no trailing space
+        ("Thanks.\n\n", "Hello.", "", " Thanks.\n\n"),
+        # only a break was said
+        ("\n\n", "Hello.", "", "\n\n"),
+        ("\n\n", "Hello.\n", "", "\n"),
+        ("\n", "Hello.\n", "", ""),
+        ("\n\n", "", "", ""),
     ],
 )
 def test_adapt_to_context(text: str, before: str, after: str, expected: str) -> None:

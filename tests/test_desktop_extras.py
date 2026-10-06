@@ -31,15 +31,19 @@ pytestmark = [
 ]
 
 EM_SETSEL, WM_SETTEXT, WM_GETTEXT, WM_GETTEXTLENGTH = 0x00B1, 0x000C, 0x000D, 0x000E
+# Plain Win32 edit box, and RichEdit - the control family of Windows 11 Notepad.
+CONTROLS = ["EDIT", "RICHEDIT50W"]
 
 
 class TextBox:
-    """Top-level window with a multi-line EDIT control on its own UI thread."""
+    """Top-level window with a multi-line text control on its own UI thread."""
 
-    def __init__(self, text: str) -> None:
+    def __init__(self, text: str, control: str = "EDIT") -> None:
         self.top = self.edit = 0
         self._initial = text
         ready = threading.Event()
+        if control.startswith("RICHEDIT"):
+            ctypes.windll.kernel32.LoadLibraryW("Msftedit.dll")
 
         def run() -> None:
             from keynone.win32.gui import run_message_loop
@@ -47,7 +51,7 @@ class TextBox:
             instance = api.GetModuleHandleW(None)
             self.top = api.CreateWindowExW(0, "STATIC", "Keynone extras test", 0x10CF0000, 220,
                                            220, 560, 240, None, None, instance, None)
-            self.edit = api.CreateWindowExW(0, "EDIT", "", 0x50800044, 10, 10, 520, 160,
+            self.edit = api.CreateWindowExW(0, control, "", 0x50A010C4, 10, 10, 520, 160,
                                             self.top, None, instance, None)
             self.set_text(self._initial)
             api.SetForegroundWindow(self.top)
@@ -67,7 +71,7 @@ class TextBox:
         length = api.SendMessageW(self.edit, WM_GETTEXTLENGTH, 0, 0)
         buffer = ctypes.create_unicode_buffer(length + 1)
         api.SendMessageW(self.edit, WM_GETTEXT, length + 1, ctypes.addressof(buffer))
-        return buffer.value.replace("\r\n", "\n")
+        return buffer.value.replace("\r\n", "\n").replace("\r", "\n")
 
     def select(self, start: int, end: int) -> None:
         api.SendMessageW(self.edit, EM_SETSEL, start, end)
@@ -89,43 +93,67 @@ def uia() -> Iterator[UiaClient]:
     client.close()
 
 
-def _open(text: str) -> TextBox:
-    box = TextBox(text)
+def _open(text: str, control: str = "EDIT") -> TextBox:
+    box = TextBox(text, control)
     if not box.focused:
         box.close()
         pytest.skip("Windows did not give the test window the keyboard focus")
     return box
 
 
-def test_smart_spacing_mid_sentence(uia: UiaClient) -> None:
-    box = _open("I think")
+def _fit_and_insert(box: TextBox, uia: UiaClient, text: str) -> None:
+    context = uia.caret_context(timeout=5)
+    assert context is not None, "UI Automation could not read the text box"
+    fitted = adapt_to_context(text, context.before, context.after, style="default",
+                              trailing_space=True)
+    assert box.focused, "focus moved away; aborting before sending keys"
+    result = Inserter(InsertConfig()).insert(fitted, AppProfile(), window_info(box.top))
+    time.sleep(0.4)
+    assert result.inserted
+
+
+@pytest.mark.parametrize("control", CONTROLS)
+def test_smart_spacing_mid_sentence(uia: UiaClient, control: str) -> None:
+    box = _open("I think", control)
     try:
         box.select(7, 7)  # caret at the end, right after "think"
         context = uia.caret_context(timeout=5)
         assert context is not None and context.before.endswith("I think")
-        text = adapt_to_context("We should go.", context.before, context.after,
-                                style="default", trailing_space=True)
-        assert box.focused, "focus moved away; aborting before sending keys"
-        result = Inserter(InsertConfig()).insert(text, AppProfile(), window_info(box.top))
-        time.sleep(0.4)
-        assert result.inserted
+        _fit_and_insert(box, uia, "We should go.")
         assert box.text() == "I think we should go. "
     finally:
         box.close()
 
 
-def test_smart_spacing_inside_a_sentence(uia: UiaClient) -> None:
-    box = _open("Call  today.")
+@pytest.mark.parametrize("control", CONTROLS)
+def test_smart_spacing_inside_a_sentence(uia: UiaClient, control: str) -> None:
+    box = _open("Call  today.", control)
     try:
         box.select(5, 5)  # caret between the two spaces
-        context = uia.caret_context(timeout=5)
-        assert context is not None
-        text = adapt_to_context("John.", context.before, context.after, style="default",
-                                trailing_space=True)
-        assert box.focused, "focus moved away; aborting before sending keys"
-        Inserter(InsertConfig()).insert(text, AppProfile(), window_info(box.top))
-        time.sleep(0.4)
+        _fit_and_insert(box, uia, "John.")
         assert box.text() == "Call John today."
+    finally:
+        box.close()
+
+
+@pytest.mark.parametrize("control", CONTROLS)
+def test_spoken_paragraph_break_fits_the_text_before(uia: UiaClient, control: str) -> None:
+    box = _open("Hello team.", control)
+    try:
+        box.select(11, 11)  # caret at the end
+        _fit_and_insert(box, uia, "\n\nThe build is green.")  # "new paragraph, the build ..."
+        assert box.text() == "Hello team.\n\nThe build is green. "
+    finally:
+        box.close()
+
+
+@pytest.mark.parametrize("control", CONTROLS)
+def test_dictated_list_starts_on_its_own_line(uia: UiaClient, control: str) -> None:
+    box = _open("Agenda:", control)
+    try:
+        box.select(7, 7)
+        _fit_and_insert(box, uia, "1. Budget\n2. Hiring")
+        assert box.text() == "Agenda:\n1. Budget\n2. Hiring"
     finally:
         box.close()
 

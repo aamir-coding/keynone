@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -142,12 +143,26 @@ class Outcome:
     rejections: list[str] = field(default_factory=list)
 
 
+def _implementation() -> tuple[Any, Any, Any]:
+    """(CleanupPipeline, CleanupSettings, finalize) - or an older copy of the cleanup
+    package named ``oldcleanup`` in $KEYNONE_STRESS_BASELINE, to measure before/after."""
+    baseline = os.environ.get("KEYNONE_STRESS_BASELINE")
+    if not baseline:
+        return CleanupPipeline, CleanupSettings, formatting.finalize
+    sys.path.insert(0, baseline)
+    from oldcleanup import formatting as old_formatting  # type: ignore[import-not-found]
+    from oldcleanup import pipeline as old_pipeline  # type: ignore[import-not-found]
+
+    return old_pipeline.CleanupPipeline, old_pipeline.CleanupSettings, old_formatting.finalize
+
+
 def run_updates(updates: list[tuple[str, bool]], final: str, settings: CleanupSettings,
                 polisher: Polisher | None, finish_timeout: float = 30.0) -> Outcome:
     """Exactly what Session._process does with the recognizer's output."""
+    pipeline_class, _, finalize = _implementation()
     segmenter = SentenceSegmenter()
     fragments: list[str] = []
-    pipeline = CleanupPipeline(settings, polisher)
+    pipeline = pipeline_class(settings, polisher)
     for text, endpoint in updates:
         for sentence in segmenter.update(text, flush=endpoint):
             fragments.append(sentence)
@@ -156,8 +171,7 @@ def run_updates(updates: list[tuple[str, bool]], final: str, settings: CleanupSe
         fragments.append(sentence)
         pipeline.add_sentence(sentence)
     result = pipeline.finish(timeout=finish_timeout)
-    text = formatting.finalize(result.text, style="default", drop_final_period=False,
-                               trailing_space=False)
+    text = finalize(result.text, style="default", drop_final_period=False, trailing_space=False)
     return Outcome(text, fragments, result.llm_calls, list(result.rejections))
 
 
@@ -383,8 +397,9 @@ def settings_for(llm: bool) -> CleanupSettings:
     from keynone.config import load_config
 
     config = load_config()
-    return CleanupSettings(llm_mode="auto" if llm else "off",
-                           llm_timeout=config.cleanup.llm_timeout_seconds)
+    settings_class = _implementation()[1]
+    return settings_class(llm_mode="auto" if llm else "off",  # type: ignore[no-any-return]
+                          llm_timeout=config.cleanup.llm_timeout_seconds)
 
 
 # --------------------------------------------------------------------------- commands

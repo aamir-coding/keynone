@@ -268,7 +268,7 @@ class Session:
                        trailing: bool) -> tuple[str, bool]:
         """Smart spacing via UI Automation; returns (text, is_password_field)."""
         context = None
-        if self.uia is not None and self.config.insert.smart_spacing and text.strip():
+        if self.uia is not None and self.config.insert.smart_spacing and text.strip(" \t"):
             context = self.uia.caret_context(timeout=0.35)
         if context is not None:
             if context.is_password:
@@ -292,7 +292,7 @@ class Session:
             trailing_space=False,
         )
         base = self._base(raw, seconds, llm_calls)
-        if not text.strip():
+        if not text.strip(" \t"):  # just "new paragraph" is something to insert
             self.overlay.update(status="No speech detected", tone="idle", text="")
             self.overlay.hide(1200)
             return SessionOutcome(status="empty", **base)
@@ -310,6 +310,10 @@ class Session:
             self.overlay.hide(3500)
             return SessionOutcome(status="not_inserted", text="", latency_ms=self._latency(),
                                   message="password field", **base)
+        if not text:  # "new paragraph" where the cursor already starts one
+            self.overlay.update(status="Already on a new line", tone="done")
+            self.overlay.hide(700)
+            return SessionOutcome(status="empty", latency_ms=self._latency(), **base)
         inserted = self.inserter.insert(text, profile, target)
         return self._finish_insert(inserted, text, raw, seconds, llm_calls, target, base,
                                    success="Inserted")
@@ -357,8 +361,11 @@ class Session:
 
     def _deliver_edit(self, raw: str, seconds: float) -> SessionOutcome:
         language = detect_language(raw)
-        instruction = rules.clean_sentence(
-            raw, RuleOptions(voice_commands=False, language=language)).strip()
+        if language == "en":  # "make it shorter, no, more formal" / "... scratch that, ..."
+            instruction = rules.clean_instruction(raw)
+        else:
+            instruction = rules.clean_sentence(
+                raw, RuleOptions(voice_commands=False, language=language)).strip()
         base = self._base(raw, seconds, 0)
         if not instruction:
             self.overlay.update(status="No instruction heard", tone="idle", text="")
