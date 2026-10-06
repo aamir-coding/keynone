@@ -15,6 +15,7 @@ import threading
 import time
 
 from keynone.config import load_config
+from keynone.editions import without_missing_language_pack
 from keynone.engine.history import History
 from keynone.engine.inject import Inserter
 from keynone.engine.models import EngineModels
@@ -35,7 +36,9 @@ def run_engine(*, verbose: bool = False, overlay_enabled: bool | None = None) ->
     paths.ensure()
     setup_logging("engine", verbose=verbose, paths=paths)
     started = time.perf_counter()
-    config = load_config(paths)
+    config, edition_notes = without_missing_language_pack(load_config(paths), paths)
+    for note in edition_notes:
+        log.warning(note)
     api.enable_dpi_awareness()
     if sys.stdin is None or sys.stdout is None:
         log.error("engine needs stdin/stdout pipes (it is started by `keynone listen`)")
@@ -44,6 +47,7 @@ def run_engine(*, verbose: bool = False, overlay_enabled: bool | None = None) ->
 
     job = KillOnCloseJob()
     models = EngineModels(config, paths, job)
+    models.errors.extend(edition_notes)  # shown in the tray once the models are up
     models.start()
     show_overlay = config.overlay.enabled if overlay_enabled is None else overlay_enabled
     overlay = Overlay(opacity=config.overlay.opacity, position=config.overlay.position,

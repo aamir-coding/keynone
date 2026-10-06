@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Literal
 
+from keynone import __version__
 from keynone.paths import Paths, get_paths
 
 log = logging.getLogger(__name__)
@@ -31,7 +32,7 @@ ProgressFn = Callable[[str, int, int | None], None]
 
 _HF = "https://huggingface.co/{repo}/resolve/main/{path}"
 _CHUNK = 1 << 20
-_USER_AGENT = "keynone-setup/0.1"
+_USER_AGENT = f"keynone-setup/{__version__}"
 _MARKER = ".complete.json"
 
 
@@ -52,7 +53,7 @@ class Asset:
     source: str
     files: tuple[RemoteFile, ...]
     extract: bool = False  # unpack archives into the asset directory
-    default: bool = False  # part of a plain `keynone setup`
+    # (What a plain `keynone setup` installs is decided by keynone.editions.)
 
     def directory(self, paths: Paths) -> Path:
         root = paths.bin if self.kind == "runtime" else paths.models
@@ -129,7 +130,6 @@ REGISTRY: tuple[Asset, ...] = (
         title="NVIDIA Nemotron Speech Streaming EN 0.6B (560 ms chunks, int8, sherpa-onnx)",
         license="NVIDIA Open Model License",
         source="https://huggingface.co/nvidia/nemotron-speech-streaming-en-0.6b",
-        default=True,
         files=(
             _hf(
                 _NEMOTRON_560,
@@ -241,7 +241,6 @@ REGISTRY: tuple[Asset, ...] = (
         title="Liquid LFM2.5 1.2B Instruct (GGUF Q4_K_M)",
         license="LFM Open License v1.0 (free for individuals / orgs < $10M revenue)",
         source="https://huggingface.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF",
-        default=True,
         files=(
             _hf(
                 "LiquidAI/LFM2.5-1.2B-Instruct-GGUF",
@@ -287,7 +286,6 @@ REGISTRY: tuple[Asset, ...] = (
         title="llama.cpp b11398 Windows CPU x64 (llama-server)",
         license="MIT",
         source="https://github.com/ggml-org/llama.cpp/releases/tag/b11398",
-        default=True,
         extract=True,
         files=(
             RemoteFile(

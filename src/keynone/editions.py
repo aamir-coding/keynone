@@ -16,12 +16,18 @@ folder; that only decides what a plain ``keynone setup`` downloads.
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from keynone.paths import Paths, get_paths
 
+if TYPE_CHECKING:
+    from keynone.config import Config
+
 # Defined here rather than in keynone.asr so the settings window and the
 # command line can ask about editions without loading numpy and sherpa-onnx.
+ENGLISH_MODEL = "nemotron-en-560ms-int8"
 MULTILINGUAL_MODEL = "nemotron3.5-multi-560ms-int8"
 LANGUAGE_PACK: tuple[str, ...] = (MULTILINGUAL_MODEL,)
 EDITION_FILE = "edition.txt"
@@ -39,7 +45,7 @@ class Edition:
 BASE = Edition(
     "base", "Keynone",
     "English dictation, cleanup, speak-to-edit",
-    ("nemotron-en-560ms-int8", "lfm2.5-1.2b-instruct-q4km", "llama.cpp-b11398-cpu-x64"),
+    (ENGLISH_MODEL, "lfm2.5-1.2b-instruct-q4km", "llama.cpp-b11398-cpu-x64"),
     1375,
 )
 LANGUAGES = Edition(
@@ -71,3 +77,35 @@ def download_edition(paths: Paths | None = None) -> Edition:
     except OSError:
         return BASE
     return EDITIONS.get(name, BASE)
+
+
+ADD_LANGUAGE_PACK = "keynone setup --edition languages"
+
+
+def without_missing_language_pack(config: Config, paths: Paths | None = None
+                                  ) -> tuple[Config, list[str]]:
+    """``config`` as this installation can run it, plus what was changed and why.
+
+    Without the language pack, dictation stays in English (with the English model)
+    and nothing is translated, instead of failing because a model is missing.
+    With the pack, ``config`` is returned unchanged.
+    """
+    if language_pack_installed(paths):
+        return config, []
+    notes: list[str] = []
+    asr, cleanup = config.asr, config.cleanup
+    if asr.language.split("-")[0].lower() != "en":
+        notes.append(f'asr.language = "{asr.language}" needs the language pack - dictating in '
+                     f"English. Add it with: {ADD_LANGUAGE_PACK}")
+        asr = dataclasses.replace(asr, language="en")
+    if asr.model in LANGUAGE_PACK:
+        notes.append(f"asr.model = {asr.model} needs the language pack - using the English "
+                     f"model. Add it with: {ADD_LANGUAGE_PACK}")
+        asr = dataclasses.replace(asr, model=ENGLISH_MODEL)
+    if cleanup.translate_to.strip():
+        notes.append(f'cleanup.translate_to = "{cleanup.translate_to}" needs the language pack '
+                     f"- not translating. Add it with: {ADD_LANGUAGE_PACK}")
+        cleanup = dataclasses.replace(cleanup, translate_to="")
+    if not notes:
+        return config, []
+    return dataclasses.replace(config, asr=asr, cleanup=cleanup), notes

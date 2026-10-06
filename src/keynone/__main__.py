@@ -21,27 +21,44 @@ from pathlib import Path
 
 def _cmd_setup(args: argparse.Namespace) -> int:
     from keynone.assets import REGISTRY, get_asset, install, remove
+    from keynone.editions import (
+        BASE,
+        EDITIONS,
+        LANGUAGE_PACK,
+        download_edition,
+        installed_edition,
+        language_pack_installed,
+    )
     from keynone.paths import get_paths
 
     paths = get_paths()
     paths.ensure()
     if args.list:
+        print(f"This installation: {installed_edition(paths).name}\n")
+        for edition in EDITIONS.values():
+            print(f"  keynone setup --edition {edition.id:10s} {edition.name} "
+                  f"(~{edition.download_mb / 1000:.1f} GB): {edition.summary}")
+        print()
         for asset in REGISTRY:
-            mark = "installed" if asset.is_installed(paths) else ("default" if asset.default
-                                                                  else "optional")
-            print(f"{asset.id:30s} {mark:10s} {asset.title}\n{'':41s}license: {asset.license}")
+            mark = "installed" if asset.is_installed(paths) else "-"
+            part = ("base" if asset.id in BASE.assets else
+                    "language pack" if asset.id in LANGUAGE_PACK else "optional")
+            print(f"{asset.id:30s} {mark:10s} {part:14s} {asset.title}\n"
+                  f"{'':56s}license: {asset.license}")
         return 0
     if args.remove:
         for asset_id in args.remove:
             remove(get_asset(asset_id), paths)
             print(f"removed {asset_id}")
         return 0
-    wanted = [a for a in REGISTRY if a.default] + [get_asset(i) for i in args.with_ or []]
+    edition = EDITIONS[args.edition] if args.edition else download_edition(paths)
+    wanted = [get_asset(i) for i in (*edition.assets, *(args.with_ or []))]
 
     def progress(name: str, done: int, total: int | None) -> None:
         pct = f"{100 * done / total:5.1f}%" if total else ""
         print(f"\r  {name}: {done / 1e6:7.1f} MB {pct}", end="", flush=True)
 
+    print(f"Setting up {edition.name}: {edition.summary}.")
     for asset in wanted:
         if asset.is_installed(paths):
             print(f"[ok] {asset.id}")
@@ -49,7 +66,10 @@ def _cmd_setup(args: argparse.Namespace) -> int:
         print(f"[..] {asset.id} - {asset.title} ({asset.license})")
         install(asset, paths, progress)
         print(f"\n[ok] {asset.id}")
-    print("Setup complete. Start dictating with:  keynone listen")
+    print(f"{installed_edition(paths).name} is ready. Start dictating with:  keynone listen")
+    if args.edition == BASE.id and language_pack_installed(paths):
+        removal = " ".join(f"--remove {asset_id}" for asset_id in LANGUAGE_PACK)
+        print(f"The language pack is still installed. To free its space: keynone setup {removal}")
     return 0
 
 
@@ -120,6 +140,11 @@ def _cmd_transcribe(args: argparse.Namespace) -> int:
         config.cleanup.translate_to = args.translate_to
     if args.gpu:
         config.llm.gpu = args.gpu
+    from keynone.editions import without_missing_language_pack
+
+    config, notes = without_missing_language_pack(config, paths)
+    for note in notes:
+        print(f"note: {note}")
     api.enable_dpi_awareness()
     job = KillOnCloseJob()
     models = EngineModels(config, paths, job)
@@ -219,8 +244,13 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
         return 1
     from keynone.asr import effective_model
     from keynone.cleanup.llm import LLAMA_VULKAN_RUNTIME_ID, list_gpu_devices, resolve_gpu_device
+    from keynone.editions import installed_edition, without_missing_language_pack
     from keynone.win32.uia import UiaClient
 
+    print(f"edition: {installed_edition(paths).name}")
+    config, notes = without_missing_language_pack(config, paths)
+    for note in notes:
+        check("language settings", False, note)
     asr_model = effective_model(config.asr.model, config.asr.language)
     print(f"speech language: {config.asr.language} (model {asr_model})")
     for asset_id in (asr_model, config.llm.model, LLAMA_RUNTIME_ID):
@@ -285,12 +315,18 @@ def _cmd_bench(args: argparse.Namespace) -> int:
         effective_model,
         model_files,
     )
+    from keynone.assets import get_asset
     from keynone.bench import read_wav_mono16k
     from keynone.config import load_config
 
     config = load_config(paths)
     language = args.language or config.asr.language
     model = args.model or effective_model(config.asr.model, language)
+    if model in MULTILINGUAL_MODELS and not get_asset(model).is_installed(paths):
+        from keynone.editions import ADD_LANGUAGE_PACK
+
+        print(f"{model} is the language pack's speech model. Add it with: {ADD_LANGUAGE_PACK}")
+        return 1
     wav = Path(args.wav) if args.wav else paths.data / "test_audio" / "long.wav"
     if not wav.exists():
         print(f"{wav} not found: pass --wav FILE (16 kHz mono WAV) or run "
@@ -327,6 +363,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("setup", help="download and verify models")
+    p.add_argument("--edition", choices=["base", "languages"],
+                   help="what to install: base (English, ~1.4 GB) or languages (+ the "
+                        "language pack, ~2.0 GB); default: the edition of this download")
     p.add_argument("--with", dest="with_", action="append", metavar="ASSET",
                    help="also install an optional asset (see --list)")
     p.add_argument("--list", action="store_true", help="list available assets")

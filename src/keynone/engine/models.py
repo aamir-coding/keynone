@@ -16,6 +16,7 @@ from keynone.asr import MULTILINGUAL_MODELS, Recognizer, effective_model, model_
 from keynone.cleanup.llm import Completion, LlmPolisher, build_polisher
 from keynone.cleanup.prompts import PromptVariant
 from keynone.config import Config
+from keynone.editions import ADD_LANGUAGE_PACK
 from keynone.paths import Paths
 from keynone.win32.process import KillOnCloseJob
 
@@ -94,8 +95,8 @@ class EngineModels:
                                          multilingual=model in MULTILINGUAL_MODELS)
         except FileNotFoundError as exc:
             log.exception("speech model missing")
-            hint = (f" - run: keynone setup --with {self.asr_model}"
-                    if self.asr_model in MULTILINGUAL_MODELS else "")
+            hint = (f" - run: {ADD_LANGUAGE_PACK}" if self.asr_model in MULTILINGUAL_MODELS
+                    else " - run: keynone setup")
             self.errors.append(f"Speech model missing{hint} ({exc})")
         except Exception as exc:
             log.exception("speech model failed to load")
