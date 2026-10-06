@@ -132,6 +132,101 @@ def test_unpunctuated_questions_get_question_marks(raw: str, expected: str) -> N
     assert finalize(raw, style="default", drop_final_period=False, trailing_space=False) == expected
 
 
+# --------------------------------------------------------------------------- real dictations
+# Recognizer output patterns that came out wrong in real use (Notepad, October 2026).
+
+
+def test_inline_new_paragraph() -> None:
+    assert dictate("So this is the opening paragraph, new paragraph this is the closing "
+                   "paragraph") == (
+        "So this is the opening paragraph.\n\nThis is the closing paragraph."
+    )
+
+
+def test_list_markers_split_by_pauses() -> None:
+    assert dictate("We need three things for the weekend.", "Number one",
+                   "tickets number two a map.", "And finally number three", "snacks") == (
+        "We need three things for the weekend:\n1. Tickets\n2. A map\n3. Snacks"
+    )
+
+
+def test_list_with_bare_numbers() -> None:
+    assert dictate("For the picnic we need one the basket two the blanket three the plates "
+                   "and four the juice") == (
+        "For the picnic we need:\n1. The basket\n2. The blanket\n3. The plates\n4. The juice"
+    )
+
+
+def test_list_announced_by_a_count() -> None:
+    assert dictate("So for our workshop tomorrow we need five things the slides, the badges, "
+                   "the markers, the laptops and the snacks") == (
+        "So for our workshop tomorrow we need five things:\n1. The slides\n2. The badges\n"
+        "3. The markers\n4. The laptops\n5. The snacks"
+    )
+
+
+def test_make_a_list() -> None:
+    assert dictate("Let's make a list of what all we need the flour, butter, a bowl, and a "
+                   "whisk") == (
+        "Let's make a list of what all we need:\n1. The flour\n2. Butter\n3. A bowl\n4. A whisk"
+    )
+
+
+@pytest.mark.parametrize("fragments", [
+    ("I want to leave at seven thirty AM no scratch that six thirty AM tomorrow.",
+     "I hope the roads are clear"),
+    ("I want to leave at seven thirty.", "No scratch that six thirty AM tomorrow.",
+     "I hope the roads are clear"),
+])
+def test_no_scratch_that_corrects_the_time(fragments: tuple[str, ...]) -> None:
+    assert dictate(*fragments) == "I want to leave at 6:30 AM tomorrow. I hope the roads are clear."
+
+
+def test_corrections_starting_new_sentences_with_bare_no() -> None:
+    assert dictate("Why don't we plan to meet at the cafe near the station?",
+                   "No meet at the gallery tomorrow morning.", "No tomorrow night.") == (
+        "Why don't we plan to meet at the gallery tomorrow night?"
+    )
+
+
+def test_chain_of_no_scratch_that() -> None:
+    assert dictate("Why don't we meet tomorrow morning no scratch that day after tomorrow "
+                   "morning at the gallery no scratch that at the museum") == (
+        "Why don't we meet day after tomorrow morning at the museum?"
+    )
+
+
+def test_scratch_that_heard_as_cross_that() -> None:
+    assert dictate("Let's start at two fifteen pm.",
+                   "Uh, you know what cross that let's start at three pm.") == (
+        "Let's start at 3 PM."
+    )
+    assert dictate("let's just keep testing it and um see how it plays out uh cross that "
+                   "see how it works") == "Let's just keep testing it and see how it works."
+    assert dictate("We'll cross that bridge when we get there.") == (
+        "We'll cross that bridge when we get there."
+    )
+
+
+def test_names_after_pauses_are_not_sentences() -> None:
+    assert dictate("Google Docs", "Notion", "Figma slash Miro boards.") == (
+        "Google Docs Notion Figma slash Miro boards."
+    )
+
+
+def test_scratch_that_removes_what_was_said_since_the_pause() -> None:
+    assert dictate("Hi Maya, Leo here", "really really nice photos", "scratch that",
+                   "new paragraph", "come on, turn the lights on") == (
+        "Hi Maya, Leo here.\n\nCome on, turn the lights on."
+    )
+
+
+def test_misheard_no() -> None:
+    assert dictate("Let's meet tomorrow morning nor tonight") == "Let's meet tonight."
+    assert dictate("Meet me at the bakery know the museum") == "Meet me at the museum."
+    assert dictate("I don't like tea nor coffee") == "I don't like tea nor coffee."
+
+
 def test_finalize_adds_final_period_except_for_code() -> None:
     assert finalize("ship it", style="default", drop_final_period=False,
                     trailing_space=False) == "ship it."

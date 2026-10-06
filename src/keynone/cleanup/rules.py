@@ -63,10 +63,11 @@ _FILLER_RES: dict[str, tuple[re.Pattern[str], re.Pattern[str]]] = {}
 def _filler_patterns(language: str) -> tuple[re.Pattern[str], re.Pattern[str]]:
     if language not in _FILLER_RES:
         fillers = _FILLERS_BY_LANGUAGE.get(language, _GENERIC_FILLERS)
-        wrapped = f"{fillers}|{_SOFT_FILLERS}" if language == "en" else fillers
+        # ", um, going" and ", um going" (the pause before the filler made the comma);
+        # soft fillers only between two commas (", you know what" is not one)
+        soft = rf"|(?:{_SOFT_FILLERS})\s*,\s*" if language == "en" else ""
         _FILLER_RES[language] = (
-            # ", um, going" and ", um going" (the pause before the filler made the comma)
-            re.compile(rf"(?i),\s*(?:(?:{wrapped})(?:\s*,\s*|\s+))+(?=[^\W_])"),
+            re.compile(rf"(?i),\s*(?:(?:{fillers})(?:\s*,\s*|\s+){soft})+(?=[^\W_])"),
             re.compile(
                 rf"(?i)(^|[\s,;:.!?…\"'(¿¡])(?:{fillers})(?:,|…|\.\.\.)?(?=$|[\s,;:.!?…\"')])"
             ),
@@ -373,7 +374,7 @@ _SCRATCH_CMDS = {
     "borra eso", "efface ça", "lösch das", "cancella questo", "apaga isso", "verwijder dat",
 }
 # Misrecognitions that only count as "scratch that" when spoken on their own.
-_SCRATCH_EXACT_ONLY = {"cross that", "cross that out", "scratch dat"}
+_SCRATCH_EXACT_ONLY = {"cross that", "cross that out", "scratch dat", "cross this"}
 # Spoken before a command ("No, scratch that", "Oh scratch that").
 _COMMAND_LEAD_RE = re.compile(
     r"^(?:(?:no|nope|oh|oops|um|uh|er|ah|hmm|okay|ok|so|well|actually|wait|sorry"
@@ -488,8 +489,8 @@ def close_before_break(text: str) -> str:
         return body
     sentence = _last_sentence(body.rsplit("\n", 1)[-1].strip())
     words = len(sentence.split())
-    if words <= 4 and _GREETING_RE.match(sentence):
-        return body + ","
+    if words <= 4 and _GREETING_RE.match(sentence) and "," not in sentence:
+        return body + ","  # "Hi Sarah," - but "Hi Maya, Leo here." is a sentence
     if words <= 2:  # keep a spoken comma: "Thanks," [new line] "Ravi"
         return body + ("," if text.rstrip().endswith(",") else "")
     return body + ("?" if is_question(sentence) else ".")
@@ -598,7 +599,8 @@ _FUNCTION_WORDS = frozenset(
     """a an the this that these those my your his her its our their i you he she we they it me
     him us them is are was were be been am do does did have has had will would can could
     should may might must to of in on at for by with from and or but so if as not no yes
-    just also very really there here it's i'm we're they're you're i'll we'll i've let's what""".split()
+    just also very really there here it's i'm we're they're you're i'll we'll i've let's
+    what""".split()
 )
 _DETERMINERS = frozenset(
     "a an the this that these those my your his her its our their each every any some no".split()
@@ -751,7 +753,7 @@ class Cue:
 
 _CUE_SPECS: tuple[tuple[int, bool, str], ...] = (
     (STRONG, True, r"(?:(?:no|nope|oh|okay|ok|actually|wait|sorry|you\s+know\s+what)[,.!]?\s+)?"
-                   r"(?:scratch|strike|delete|erase)\s+(?:that|this)"),
+                   r"(?:scratch|strike|delete|erase|cross)\s+(?:that|this)(?:\s+out)?"),
     (STRONG, False, r"(?:no|nope)[,.!]?\s+(?:wait|sorry)(?:[,.!]?\s+(?:i\s+meant|i\s+mean))?"),
     (STRONG, False, r"wait[,.!]?\s+no"),
     (STRONG, False, r"no[,.!]?\s+no(?![,.!]?\s+no\b)"),
@@ -868,13 +870,17 @@ def _qualify(text: str, m: re.Match[str], strength: int, scratch: bool) -> Cue |
         if prev in _DETERMINERS or not (comma_after or (prev and _is_number(prev))
                                         or (words_before and delimited) or short_value):
             return None
-    elif scratch and core.split()[-2:-1] in (["scratch"], ["strike"], ["delete"], ["erase"]):
+    elif scratch:
+        words = core.split()
+        verb = words[-3] if words[-1] == "out" else words[-2]
         # "we need to scratch that itch", "they want to strike that deal"
-        bare = len(core.split()) == 2
+        bare = len(words) == 2 or (len(words) == 3 and words[-1] == "out")
         if bare and (prev in _VERB_CONTEXT or nxt in _SCRATCH_OBJECTS):
             return None
-        # "delete that file": only a command on its own or before a new clause
-        if core.split()[-2] in ("delete", "erase") and nxt and nxt not in _CLAUSE_OPENERS:
+        # "delete that file", "cross that bridge": only a command on its own or before
+        # a new clause ("... cross that, let's start at three")
+        if verb in ("delete", "erase", "cross") and words[-1] != "out" and nxt and not (
+                nxt in _CLAUSE_OPENERS or (verb == "cross" and nxt in _CLAUSE_VERBS)):
             return None
     if core.endswith(" no") and (nxt in _NO_IDIOMS or (core.startswith("wait")
                                                        and prev in _VERB_CONTEXT)):
@@ -1541,7 +1547,10 @@ def _implicit_list(sentence: str) -> str | None:
     if anchor is None:
         return None
     intro, rest = body[: anchor.end()], body[anchor.end() :]
-    rest = re.sub(r"(?i)^\s*(?:[:,]|of\b|are\b|is\b|which are\b|namely\b)?\s*", "", rest)
+    joint = re.match(r"(?i)^\s*(?:[:,]|of\b|are\b|is\b|which are\b|namely\b)?\s*", rest)
+    if joint and joint.group(0).strip(" :,"):  # "make a list of ...": "of" stays
+        intro += " " + joint.group(0).strip(" :,")
+    rest = rest[joint.end() :] if joint else rest
     if "," in rest:
         segments = [s.strip(" .,:;") for s in _ITEM_SPLIT_RE.split(rest) if s.strip(" .,:;")]
     elif count and re.search(r"(?i)\s(?:and|or)\s", rest):
@@ -1817,12 +1826,10 @@ def starts_like_sentence(text: str) -> bool:
     stripped = text.strip()
     if re.match(r"(?i)let['’]s\s+(?!say\b)", stripped):
         return True
-    if _QUESTION_START_RE.match(stripped) and not re.match(
-            r"(?i)(?:what|why|how|where|when|who|whom|whose|which)\s+(?!(?:is|are|was|were|do"
-            r"|does|did|can|could|would|will|should|shall|has|have|had|am|don['’]t|doesn['’]t"
-            r"|didn['’]t|won['’]t|can['’]t|isn['’]t|aren['’]t)\b)", stripped):
-        return True
-    return False
+    return bool(_QUESTION_START_RE.match(stripped)) and not re.match(
+        r"(?i)(?:what|why|how|where|when|who|whom|whose|which)\s+(?!(?:is|are|was|were|do"
+        r"|does|did|can|could|would|will|should|shall|has|have|had|am|don['’]t|doesn['’]t"
+        r"|didn['’]t|won['’]t|can['’]t|isn['’]t|aren['’]t)\b)", stripped)
 
 
 _CLAUSE_START_RE = re.compile(
