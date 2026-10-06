@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # Keynone is Windows-only (keyboard hook, UI Automation, MME audio).
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      # A fresh, empty Keynone folder: tests that need the downloaded models skip.
+      KEYNONE_HOME: ${{ github.workspace }}\.ci-home
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Python (the version in .python-version) and dependencies
+        run: |
+          uv python install
+          uv lock --check
+          uv sync --frozen
+
+      - name: Lint
+        run: uv run --frozen ruff check src tests scripts
+
+      - name: Type check
+        run: uv run --frozen mypy
+
+      - name: Tests
+        run: uv run --frozen pytest
+
+      - name: Release downloads build
+        run: uv run --frozen python scripts/build_release.py --out "${{ runner.temp }}\dist"

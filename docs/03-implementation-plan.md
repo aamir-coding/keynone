@@ -14,6 +14,7 @@
 | 7. Extras (v0.2) | Speak-to-edit, smart spacing + UIA password detection, multilingual speech + language-aware cleanup + translation, optional GPU (Vulkan) with CPU fallback | ✅ see doc 01 §1.6 |
 | 8. Stress test & hardening | 352-case adversarial corpus, real-recognizer replay with 5 voices, correction grammar, list and pause handling, alignment guard, quiet-microphone normalizer | ✅ see doc 01 §1.7 |
 | 9. Settings window | Tk window for every option (FR-45…FR-50): comment-preserving edits of `config.toml` (tomlkit), validation, shortcut recording, light/dark, About page; listener applies saved settings within a second | ✅ |
+| 10. Editions & open source | Keynone / Keynone + languages from one codebase (FR-51…FR-54): `setup --edition`, `install.ps1 -Edition`, safe fallback without the language pack, reproducible release zips; MIT license, CHANGELOG, CONTRIBUTING, SECURITY, CI + release workflows, issue templates | ✅ |
 
 ## 3.2 Your 5-minute verification (real voice)
 
@@ -37,7 +38,7 @@ If your accent or vocabulary trips the recognizer, add names/terms to
 8. **Speak-to-edit:** select a sentence, hold **Ctrl+Win+Alt**, say *"make it more
    formal"* (or *"shorter"*, *"fix the grammar"*, *"translate to Hindi"*), release.
    Ctrl+Z restores the original.
-9. **Multilingual:** `keynone setup --with nemotron3.5-multi-560ms-int8`, set
+9. **Multilingual:** `keynone setup --edition languages`, set
    `[asr] language = "auto"` (or `"hi"`), dictate in your language. Optional:
    `[cleanup] translate_to = "English"`.
 10. **GPU:** `keynone setup --with llama.cpp-b11398-vulkan-x64`, set
@@ -47,6 +48,10 @@ If your accent or vocabulary trips the recognizer, add names/terms to
     next to the dictation hotkey, press `F9`, *Save*. Holding `F9` dictates at once
     (no restart, no dictation with the old keys first). Open `data/config.toml`:
     only that line changed, every comment is still there. Change it back.
+12. **Editions:** `uv run python scripts/build_release.py --working-tree` builds
+    both zips into `dist/`. Extract `keynone-0.2.0-windows.zip` somewhere else and
+    run its `scripts\install.ps1`: it downloads the base models only (~1.4 GB), and
+    the settings window's *Microphone & speech* page offers *Add the language pack*.
 
 ## 3.3 Roadmap (towards full Typeless parity)
 

@@ -39,7 +39,7 @@ scope: mobile platforms, cloud sync.
 * **FR-8** The engine streams 16 kHz mono audio through a streaming transducer with native punctuation and capitalization.
 * **FR-9** Recording continues ~200 ms after release to capture the end of the last word.
 * **FR-10** Sessions longer than `max_session_seconds` (default 600) stop automatically; hands-free can auto-stop after configurable silence.
-* **FR-10a Quiet microphones:** speech too quiet for the recognizer (peaks below about -37 dBFS) is lifted by up to +30 dB before recognition; normal levels pass untouched, the gain never rises during silence (`audio.normalize_level`).
+* **FR-10a Quiet microphones:** speech peaking below -40 dBFS is lifted before recognition, smoothly (2 dB more gain per dB quieter, at most +30 dB) so the gain never jumps mid-sentence; louder speech passes bit for bit; the gain never rises during silence or within the first 0.2 s of speech, and drops at once when speech gets louder (`audio.normalize_level`, on by default; measured in doc 01 §1.7).
 
 ### Live preview (FR-11…FR-13)
 * **FR-11** An overlay shows a level meter, status (Starting / Listening / Hands-free / Polishing / Inserted / errors), and the latest two lines of text, already cleaned by the instant rules.
@@ -70,7 +70,7 @@ scope: mobile platforms, cloud sync.
 * **FR-30** Local history (SQLite) of raw and final text, app, duration, latency; retention days; can be disabled. Window titles are not stored.
 * **FR-31** Settings in a commented TOML file, validated with precise error messages. A running listener applies saved changes within about a second (it compares the file's timestamp once a second while idle, and reacts at once to a message from the settings window), never during a dictation: a new hotkey works without a dictation first. A loaded engine restarts only if a setting it uses changed. A file with an error keeps the last good settings and shows a tray warning.
 * **FR-32** Tray menu: copy last dictation, settings window, edit config.toml, open data folder, pause/resume hotkey, quit.
-* **FR-33** CLI: `setup`, `listen [--dry-run]`, `stop`, `settings`, `doctor`, `devices`, `history`, `transcribe`, `bench`, `autostart`.
+* **FR-33** CLI: `setup [--edition base|languages]`, `listen [--dry-run]`, `stop`, `settings`, `doctor`, `devices`, `history`, `transcribe`, `bench`, `autostart`.
 
 ### Extras (FR-34…FR-44, v0.2)
 * **FR-34 Speak-to-edit:** with text selected in any app, holding the edit chord (default `Ctrl+Win+Alt`) records a spoken instruction; on release the selection is rewritten by the local LLM and replaced (one paste, undoable). Adding the extra key while holding the dictation chord switches the running session to edit mode.
@@ -93,6 +93,12 @@ scope: mobile platforms, cloud sync.
 * **FR-49** What isn't a setting is shown rather than hidden: a model that isn't downloaded, the GPU runtime or the language pack come with a button that runs the same `keynone setup ...` command in a terminal window; language settings are disabled without the language pack; the About page shows version, edition, folders, installed models with sizes, runs `keynone doctor` and restores defaults. *Start Keynone when I sign in* manages the Startup shortcut.
 * **FR-50** Light and dark palettes follow the Windows app theme (title bar included); Segoe UI; drawn for the screen's scaling (100-200 %); usable from the keyboard (Tab between controls with a visible focus, Space to switch, `Ctrl+Tab` between pages).
 
+### Editions (FR-51…FR-54, v0.2)
+* **FR-51** Two editions are built from one codebase: **Keynone** (English speech model, LFM2.5 1.2B, llama.cpp CPU; ~1.4 GB of models) and **Keynone + languages** (the same plus the *language pack*, the multilingual speech model; ~2.0 GB). The language pack is what FR-39…FR-42 need; everything else, speak-to-edit included, is in both.
+* **FR-52** What an installation can do depends only on what is installed (`keynone.editions`): adding the pack (`keynone setup --edition languages`, or the settings window) turns a base install into the languages edition, removing it turns it back. A release download names its edition in `edition.txt`, which only decides what a plain `keynone setup` / `install.ps1` downloads (`-Edition` overrides it).
+* **FR-53** Without the pack, settings that need it fall back instead of failing: `asr.language` other than `en` → English model and language; `cleanup.translate_to` → off; a multilingual `asr.model` → the English model. Each fallback is logged, shown once per engine start in the tray, and reported by `keynone doctor`; the settings window disables those options and offers to add the pack.
+* **FR-54** Releases: a `vX.Y.Z` tag builds `keynone-X.Y.Z-windows.zip` and `keynone-X.Y.Z-windows-languages.zip` (identical files except `edition.txt`), `SHA256SUMS.txt` and release notes, reproducibly (sorted entries, commit date). Models are never inside a download: setup fetches them from their publishers and verifies the pinned SHA-256 digests. A newer zip can be extracted over an older install; `data/`, `models/` and `bin/` are kept.
+
 ## 2.4 Non-functional requirements
 
 | ID | Requirement | Target | Measured (Ryzen 5 5600H) |
@@ -113,6 +119,9 @@ scope: mobile platforms, cloud sync.
 | NFR-14 | Smart-spacing cost at insertion | ≤ 50 ms | ~7 ms per UIA query (after background warm-up) |
 | NFR-15 | Speak-to-edit, typical instruction | ≤ 2 s CPU, ≤ 1 s GPU | median 0.6 s CPU, 0.2 s GPU (cached prompt) |
 | NFR-16 | Cleanup quality on adversarial dictation | no regression | stress set: 343/343 punctuated (rules only); 94–98 % on real recognizer output (5 voices) |
+| NFR-17 | English dictation in both editions | identical | same code and models; the English path never consults the pack (`asr.language = "en"` fixes every sentence to English) |
+| NFR-18 | Settings window start-up | ≤ 2 s | window shown 1.2 s after launch; redraw of a page < 0.5 s |
+| NFR-19 | Download size | language features cost only those who use them | zips 0.25 MB each; models ~1.4 GB (base) vs ~2.0 GB (languages) |
 
 ## 2.5 Architecture
 
@@ -159,6 +168,7 @@ overlay UI thread, model loaders. sherpa-onnx and llama.cpp release the GIL.
 | `models/<asset>/` | Speech/LLM models (+ `.complete.json` with verified hashes) |
 | `bin/llama.cpp-*/` | llama-server runtime |
 | `data/config.toml` | User settings (copied from `src/keynone/default_config.toml`); `config.toml.bak` after *Restore the default settings* |
+| `edition.txt` | Only in release downloads: `base` or `languages` (what a plain setup downloads) |
 | `data/history.db` | `dictations(id, created_at, app, raw_text, final_text, audio_seconds, latency_ms, llm_calls, method)` |
 | `data/logs/` | Rotating logs; transcripts only if `privacy.log_transcripts = true` |
 | `data/cache/` | LLM prompt-prefix slot files, generated icons and sounds |
@@ -194,3 +204,4 @@ The only optional exception is `keynone autostart enable` (Startup shortcut).
 | AC-11 | GPU acceleration with CPU fallback | `keynone bench cleanup --gpu auto`, unit test for fallback | ✅ |
 | AC-12 | Adversarial dictation (fillers, repetitions, corrections, commands, lists) | `tests/test_dictation_stress.py`; `scripts/stress_test.py text/audio/edit` | ✅ |
 | AC-13 | The settings window covers every option and edits `config.toml` without losing anything; the listener applies saved changes while idle | `tests/test_settings_*.py`, `tests/test_listener_reload.py` | ✅ |
+| AC-14 | Both editions build from one tag; a base install runs without the language pack and falls back safely | `tests/test_editions.py`; `scripts/build_release.py --working-tree`; the base zip installed into an empty folder | ✅ |

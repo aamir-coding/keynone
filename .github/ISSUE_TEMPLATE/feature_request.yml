@@ -1,0 +1,23 @@
+name: Idea or feature request
+description: Something Keynone could do better.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you are trying to do
+      description: The situation, not the solution. "When I dictate an e-mail, ..."
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+  - type: checkboxes
+    id: principles
+    attributes:
+      label: Keynone's ground rules
+      description: Ideas that break these are unlikely to be accepted.
+      options:
+        - label: It works offline, without an account or telemetry.
+        - label: It keeps all files inside the Keynone folder.

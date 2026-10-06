@@ -33,13 +33,37 @@ release the key, **0 % CPU** while idle.
 | **Multilingual** | 40 locales (Hindi, Spanish, French, German, Italian, Portuguese, Russian, Japanese, Korean, Chinese, Arabic …), auto-detected; optional translation of every dictation |
 | **GPU boost (optional)** | The language model on your GPU (e.g. GTX 1650 via Vulkan): ~3× faster polishing, ~5× faster speak-to-edit |
 
+## Download
+
+There are two editions of the same app. They differ only in the models the
+installer downloads, so you don't store a 651 MB speech model you never use:
+
+| | **Keynone** | **Keynone + languages** |
+|---|:---:|:---:|
+| English dictation, cleanup, speak-to-edit, smart spacing, GPU option | ✓ | ✓ |
+| Dictation in 40 other languages, language-aware cleanup | | ✓ |
+| Translating every dictation into another language | | ✓ |
+| Models downloaded during setup | ~1.4 GB | ~2.0 GB |
+| Release file | `keynone-<version>-windows.zip` | `keynone-<version>-windows-languages.zip` |
+
+Not sure? Take **Keynone**. You can add the language pack at any time with
+`keynone setup --edition languages` (or from the settings window), and remove it
+again. English dictation is exactly the same in both.
+
 ## Quick start
 
-Requirements: Windows 10/11 x64, [uv](https://docs.astral.sh/uv/), ~3 GB free disk.
+Requirements: Windows 10/11 x64, [uv](https://docs.astral.sh/uv/), 2–3 GB free disk.
+
+Extract the zip (or clone this repository), then run this in PowerShell, inside the
+`keynone` folder:
 
 ```bash
 powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
 ```
+
+The installer downloads the models of your edition. From a git clone, add
+`-Edition languages` to get the language pack too. To update later, extract a newer
+zip over the old folder: your settings, history and models stay.
 
 Then double-click **`Keynone.cmd`**. A microphone icon appears in the tray.
 
@@ -98,8 +122,10 @@ and `cleanup.llm_mode = "always"`.
 
 ### Other languages
 
+These need the language pack (the *Keynone + languages* download, or add it):
+
 ```bash
-keynone setup --with nemotron3.5-multi-560ms-int8
+keynone setup --edition languages
 ```
 
 ```toml
@@ -114,6 +140,8 @@ English keeps the more accurate English-only model (`language = "en"`). For
 other languages the same instant rules apply where they are safe (fillers such
 as "äh", "euh"; repetitions), and the LLM steps in only for sentences with a
 self-correction or filler cue. Translation quality is best with Qwen3.5 2B.
+Without the language pack these settings fall back to English (Keynone tells you
+in the tray) instead of failing.
 
 ### GPU acceleration
 
@@ -138,7 +166,7 @@ back to the CPU automatically. `keynone doctor` lists the GPUs it can see.
 
 | Command | Purpose |
 |---|---|
-| `keynone setup [--list] [--with ID] [--remove ID]` | Download/verify models |
+| `keynone setup [--edition base\|languages] [--list] [--with ID] [--remove ID]` | Download/verify models (default: the edition of your download) |
 | `keynone listen [--dry-run]` | Run the listener (`--dry-run`: show, never type) |
 | `keynone stop` | Stop the listener |
 | `keynone settings` | Open the settings window (it edits `data/config.toml`) |
@@ -162,11 +190,15 @@ moment of inserting, and never stores them).
 
 ```bash
 . .\scripts\env.ps1                     # keeps uv caches/temp inside the folder
+uv sync                                 # the app plus the dev tools (pytest, ruff, mypy)
 uv run pytest                           # unit + integration tests (incl. the stress set)
 uv run ruff check src tests scripts && uv run mypy
 uv run python scripts/make_test_audio.py   # synthesized test dictations
 uv run keynone transcribe --realtime data/test_audio/*.wav
+uv run python scripts/build_release.py --working-tree   # both release zips, into dist/
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
 Stress test (adversarial dictations, `src/keynone/evaldata/dictation_stress*.jsonl`):
 
@@ -203,11 +235,22 @@ src/keynone/
 | Component | License |
 |---|---|
 | NVIDIA Nemotron Speech Streaming EN 0.6B (speech) | NVIDIA Open Model License |
-| NVIDIA Nemotron 3.5 ASR Streaming 0.6B (optional, multilingual speech) | OpenMDW-1.1 |
+| NVIDIA Nemotron 3.5 ASR Streaming 0.6B (language pack, multilingual speech) | OpenMDW-1.1 |
 | Liquid LFM2.5 1.2B Instruct (cleanup) | LFM Open License v1.0 (free for individuals and organizations under $10M revenue) |
 | Qwen3.5 2B (optional) | Apache-2.0 |
 | sherpa-onnx / ONNX Runtime | Apache-2.0 / MIT |
 | llama.cpp (CPU and optional Vulkan build) | MIT |
 | comtypes (UI Automation) | MIT |
+
+The models are not part of Keynone's code and are not inside the downloads: setup
+fetches them from their publishers and checks every file against a pinned SHA-256
+digest.
+
+## License and contributing
+
+Keynone is free software under the [MIT License](LICENSE). Contributions are
+welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the setup, the checks to run
+and the rules for cleanup changes, and [SECURITY.md](SECURITY.md) to report a
+security problem. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 Keynone is an independent project and is not affiliated with Typeless.

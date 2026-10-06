@@ -44,7 +44,8 @@ def test_editions_are_built_from_registered_assets() -> None:
     for edition in EDITIONS.values():
         assert set(edition.assets) <= known, edition.id
     assert set(LANGUAGES.assets) == set(BASE.assets) | set(LANGUAGE_PACK)
-    assert ENGLISH_MODEL in BASE.assets and ENGLISH_MODEL == Config().asr.model
+    assert ENGLISH_MODEL in BASE.assets
+    assert Config().asr.model == ENGLISH_MODEL
     assert Config().llm.model in BASE.assets
     assert ASR_MULTILINGUAL in LANGUAGE_PACK
     assert LANGUAGES.download_mb > BASE.download_mb

@@ -12,6 +12,9 @@ bin/
 # --- Runtime data (config, history, logs, prompt caches) ---
 data/
 
+# --- Only inside release downloads (scripts/build_release.py writes it) ---
+edition.txt
+
 # --- Python ---
 __pycache__/
 *.py[cod]

@@ -1,0 +1,13 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+
+  # Python packages (uv.lock). Model and runtime downloads are pinned by SHA-256
+  # in src/keynone/assets.py and updated by hand.
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: monthly

@@ -1,0 +1,33 @@
+name: Release
+
+# Push a tag such as v0.2.0 (matching src/keynone/__init__.py and a CHANGELOG
+# entry) to publish both downloads: Keynone and Keynone + languages.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # the last commit's date makes the zips reproducible
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Build the two downloads
+        run: uv run --no-project python scripts/build_release.py --tag "${{ github.ref_name }}" --out dist
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Keynone ${{ github.ref_name }}
+          body_path: dist/release-notes.md
+          files: |
+            dist/*.zip
+            dist/SHA256SUMS.txt

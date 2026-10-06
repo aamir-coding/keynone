@@ -97,7 +97,7 @@ Cold start (first dictation after the engine unloaded): ASR ready after ~4.6–5
 | Dormant listener (always) | 0 ms CPU in 10 s idle | ~22 MB private (32 MB working set) |
 | Engine loaded, idle (warm period) | 0 % | ~2.0 GB working set (ASR 0.74 GB, llama-server 1.24 GB incl. mapped model) |
 | Dictating | ~30 % of 4 threads (ASR) + LLM bursts | same |
-| Disk | — | ~1.4 GB default models (+1.3 GB optional Qwen3.5 2B) |
+| Disk | — | ~1.4 GB models (Keynone), ~2.0 GB with the language pack (Keynone + languages); +1.3 GB optional Qwen3.5 2B |
 
 ## 1.6 Extras (v0.2) — measured on the same machine
 
@@ -159,6 +159,26 @@ What changed (details in the code comments and in
 * **Guard.** Language model output is aligned word by word against the input.
   Anything that drops content, answers the text or adds words is rejected, and
   the rule-based text is used instead.
+
+**Quiet microphones** (`audio.normalize_level`). 48 of the recordings were played
+at lower levels with realistic noise: room noise that gets quieter with the
+speech, plus the converter's own noise at -90 dBFS. Word error rate of the speech
+model, by median speech peak:
+
+| Speech peak | -4 dBFS | -24 | -34 | -39 | -44 | -49 |
+|---|---|---|---|---|---|---|
+| No boost | 2.3 % | 0.5 % | 1.6 % | 2.5 % | 5.2 % | 12.3 % |
+| **Boost (default)** | 2.3 % | 0.5 % | 1.6 % | **2.3 %** | **2.3 %** | **4.1 %** |
+
+Down to -40 dBFS the audio passes through bit for bit. Below that the gain grows
+smoothly, by 2 dB for each dB quieter, up to +30 dB. It only rises after the first
+0.2 s of speech and never during silence. Two earlier designs lifted quiet speech
+straight to a target level. Both made recognition *worse* where the level hovered
+around their threshold (1.6 → 4.8 % at -34 dBFS, and 5.2 → 13 % at -44 dBFS): a
+sudden 25-30 dB step mid-sentence confuses the recognizer more than a low level
+does. With a noisy microphone (a fixed noise floor at -60 dBFS) the results are
+the same with and without the boost: speech that barely stands out from the noise
+is left alone.
 
 ## 1.8 Known limitations
 
