@@ -12,6 +12,7 @@ from typing import Any
 
 import numpy as np
 
+from keynone.audio_level import LevelNormalizer
 from keynone.cleanup import formatting, guard, rules
 from keynone.cleanup.language import detect_language
 from keynone.cleanup.pipeline import CleanupPipeline, CleanupSettings
@@ -209,6 +210,7 @@ class Session:
         cfg = self.config
         polisher = self.models.lazy_polisher if self.models.llm_enabled else None
         stream = recognizer.stream(cfg.asr.language)
+        normalizer = LevelNormalizer() if cfg.audio.normalize_level else None
         self._segmenter = SentenceSegmenter()
         self._pipeline = CleanupPipeline(self._settings(), polisher, on_update=self._refresh)
 
@@ -234,7 +236,8 @@ class Session:
                     break
             assert isinstance(item, bytes)
             before = stream.text
-            update = stream.accept_pcm16(b"".join(c for c in chunks if isinstance(c, bytes)))
+            pcm = b"".join(c for c in chunks if isinstance(c, bytes))
+            update = stream.accept_pcm16(normalizer.process(pcm) if normalizer else pcm)
             if update:
                 text, endpoint = update
                 if text != before and self._first_audio is not None:

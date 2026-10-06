@@ -51,6 +51,8 @@ class AudioConfig:
     cues: bool = True
     max_session_seconds: int = 600
     handsfree_silence_stop_seconds: float = 0.0
+    # Boost a quiet microphone (up to +30 dB) before speech recognition.
+    normalize_level: bool = True
 
 
 @dataclass

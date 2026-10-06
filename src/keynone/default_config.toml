@@ -34,6 +34,8 @@ cues = true
 max_session_seconds = 600
 # Hands-free mode stops by itself after this much silence (0 = never).
 handsfree_silence_stop_seconds = 0
+# Boost a quiet or distant microphone (up to +30 dB) before speech recognition.
+normalize_level = true
 
 [asr]
 model = "nemotron-en-560ms-int8"
