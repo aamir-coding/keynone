@@ -252,6 +252,21 @@ class WAVEINCAPSW(ctypes.Structure):
     ]
 
 
+class LASTINPUTINFO(ctypes.Structure):
+    _fields_ = [("cbSize", wintypes.UINT), ("dwTime", wintypes.DWORD)]
+
+
+class SYSTEM_POWER_STATUS(ctypes.Structure):
+    _fields_ = [
+        ("ACLineStatus", ctypes.c_ubyte),
+        ("BatteryFlag", ctypes.c_ubyte),
+        ("BatteryLifePercent", ctypes.c_ubyte),
+        ("SystemStatusFlag", ctypes.c_ubyte),  # 1: battery saver is on
+        ("BatteryLifeTime", wintypes.DWORD),
+        ("BatteryFullLifeTime", wintypes.DWORD),
+    ]
+
+
 # --------------------------------------------------------------------------- functions
 
 
@@ -395,9 +410,28 @@ waveInClose = _fn(winmm, "waveInClose", U, HWAVEIN)
 waveInGetErrorTextW = _fn(winmm, "waveInGetErrorTextW", U, U, wintypes.LPWSTR, U)
 
 
+GetLastInputInfo = _fn(user32, "GetLastInputInfo", wintypes.BOOL, ctypes.POINTER(LASTINPUTINFO))
+GetTickCount = _fn(kernel32, "GetTickCount", D)
+GetSystemPowerStatus = _fn(kernel32, "GetSystemPowerStatus", wintypes.BOOL,
+                           ctypes.POINTER(SYSTEM_POWER_STATUS))
+
+
 def rgb(r: int, g: int, b: int) -> int:
     """COLORREF from components."""
     return r | (g << 8) | (b << 16)
+
+
+def user_idle_seconds() -> float:
+    """Time since the last keyboard or mouse input in this session (0 if unknown)."""
+    info = LASTINPUTINFO(cbSize=ctypes.sizeof(LASTINPUTINFO))
+    if not GetLastInputInfo(ctypes.byref(info)):
+        return 0.0
+    return ((GetTickCount() - info.dwTime) & 0xFFFFFFFF) / 1000.0  # the counter wraps
+
+
+def battery_saver_on() -> bool:
+    status = SYSTEM_POWER_STATUS()
+    return bool(GetSystemPowerStatus(ctypes.byref(status))) and status.SystemStatusFlag == 1
 
 
 def enable_dpi_awareness() -> None:

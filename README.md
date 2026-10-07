@@ -88,9 +88,12 @@ appears (the speech model loads; your audio is already being recorded).
 
 Only a tiny listener stays running (≈22 MB, 0 % CPU, no microphone, no models).
 The engine (≈2 GB) starts when you press the hotkey and unloads after
-`lifecycle.keep_warm_seconds` (default 300 s). Set it to `0` for strict
-on-demand: nothing heavy stays resident, at the cost of the ~5 s model load on
-every dictation.
+`lifecycle.keep_warm_seconds` (default 300 s). While you dictate often, smart
+warm-up keeps it loaded longer (15 minutes after 2 dictations in half an hour,
+30 after 3 in an hour), so you rarely wait for the models; it still unloads when
+you step away for 10 minutes or battery saver is on (`lifecycle.smart_warm`).
+Set `keep_warm_seconds` to `0` for strict on-demand: nothing heavy stays
+resident, at the cost of the ~5 s model load on every dictation.
 
 ## Settings
 

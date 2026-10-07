@@ -27,6 +27,7 @@ from keynone.ipc import Msg
 from keynone.listener import control
 from keynone.listener.engine_proc import EngineProcess
 from keynone.listener.hotkeys import Action, HotkeyMachine
+from keynone.listener.warm import WarmPolicy
 from keynone.logging_setup import setup_logging
 from keynone.paths import Paths, get_paths
 from keynone.sounds import Cues
@@ -47,7 +48,7 @@ _REC_COLOR = (229, 72, 77)
 # Settings only the listener uses: changing them never restarts a loaded engine.
 _LISTENER_ONLY = {
     "hotkeys": ("dictate", "cancel", "paste_last", "hold_threshold_ms", "double_tap_ms"),
-    "lifecycle": ("keep_warm_seconds",),
+    "lifecycle": ("keep_warm_seconds", "smart_warm"),
     "audio": ("cues", "device", "max_session_seconds"),
 }
 
@@ -116,7 +117,9 @@ class ListenerApp:
         self._session_started = 0.0
         self._session_open = False  # recording, or released and still being finished
         self._session_stopped = 0.0
-        self._quit_timer: threading.Timer | None = None
+        self.warm = WarmPolicy(self.config.lifecycle.keep_warm_seconds,
+                               self.config.lifecycle.smart_warm)
+        self._next_warm_check = 0.0
         self._running = True
         self._main_thread = 0
         self._user_paused = False  # "Pause hotkey" in the tray menu
@@ -164,6 +167,8 @@ class ListenerApp:
         old, self.config, self.machine = self.config, config, machine
         self._apply_enabled()
         self.cues.enabled = config.audio.cues
+        self.warm.keep_warm = config.lifecycle.keep_warm_seconds
+        self.warm.smart = config.lifecycle.smart_warm
         self.tray.set_tooltip(self._tooltip())
         if engine_settings_changed(old, config):
             self.engine.quit()  # the next dictation starts an engine with the new settings
@@ -271,6 +276,7 @@ class ListenerApp:
             self._next_config_check = now + CONFIG_POLL_SECONDS
             if self._idle():  # never mid-dictation: a new hotkey would lose the release
                 self._maybe_reload_config()
+        self._maybe_unload(now)
 
     def _handle(self, item: Any) -> None:
         if item is Action.START:
@@ -305,9 +311,6 @@ class ListenerApp:
             # "wake": only interrupts the wait, so housekeeping runs now
 
     def _start_session(self, mode: str = "ptt") -> None:
-        if self._quit_timer is not None:
-            self._quit_timer.cancel()
-            self._quit_timer = None
         target = int(api.GetForegroundWindow() or 0)
         self.engine.ensure_started()
         self._sid += 1
@@ -360,20 +363,19 @@ class ListenerApp:
             return  # a newer dictation is already running
         self._session_open = False
         self._next_config_check = 0.0  # settings saved meanwhile apply now
-        keep = self.config.lifecycle.keep_warm_seconds
-        if keep <= 0:
+        self.warm.dictated(time.monotonic())
+        if self.config.lifecycle.keep_warm_seconds <= 0:
             threading.Thread(target=self.engine.quit, daemon=True).start()
-        else:
-            if self._quit_timer is not None:
-                self._quit_timer.cancel()
-            self._quit_timer = threading.Timer(keep, self._quit_if_idle, args=(sid,))
-            self._quit_timer.daemon = True
-            self._quit_timer.start()
 
-    def _quit_if_idle(self, sid: int) -> None:
-        if sid == self._active_sid and self._capture is None:
-            log.info("engine idle for the warm period; unloading models")
-            self.engine.quit()
+    def _maybe_unload(self, now: float) -> None:
+        """Unload a loaded, idle engine when the warm-up policy says so (housekeeping)."""
+        if now < self._next_warm_check or not self.engine.alive or not self._idle():
+            return
+        self._next_warm_check = now + 1.0
+        if self.warm.should_unload(now, idle_seconds=api.user_idle_seconds(),
+                                   battery_saver=api.battery_saver_on()):
+            log.info("engine idle for its warm period; unloading models")
+            threading.Thread(target=self.engine.quit, daemon=True).start()
 
     def _engine_exited(self, code: int) -> None:
         self._session_open = False

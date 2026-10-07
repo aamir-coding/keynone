@@ -47,6 +47,8 @@ class HotkeyConfig:
 @dataclass
 class LifecycleConfig:
     keep_warm_seconds: int = 300
+    # Stay loaded longer while dictating often; unload when the user steps away.
+    smart_warm: bool = True
 
 
 @dataclass

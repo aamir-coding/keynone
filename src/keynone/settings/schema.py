@@ -83,6 +83,11 @@ SECTIONS: tuple[Section, ...] = (
                   "next one starts at once. 0 unloads it right away: nothing heavy keeps "
                   "running, but every dictation waits about 5 s for the model.",
                   "int", minimum=0, maximum=86_400, step=60, unit="seconds"),
+            Field("lifecycle.smart_warm", "Stay ready while I'm dictating",
+                  "When you dictate often, the engine stays loaded longer - up to 30 minutes "
+                  "after your last dictation - so the next one starts at once. It still "
+                  "unloads after 10 minutes without keyboard or mouse, and gets no extra time "
+                  "on battery saver.", "bool"),
             Field("hotkeys.hold_threshold_ms", "Tap length",
                   "A press shorter than this is a tap (used for double-tap).", "int",
                   minimum=100, maximum=1500, step=50, unit="ms", advanced=True),
