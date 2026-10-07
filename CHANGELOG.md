@@ -31,6 +31,10 @@ Notable changes to Keynone. The format follows
   one to use it again, delete one or clear them all.
 - **Paste last dictation:** Alt+Shift+V pastes your last dictation again, for
   when it went into the wrong window (`hotkeys.paste_last`, Settings → General).
+- **Home page** in the settings window: whether Keynone is running, your
+  shortcuts, and your statistics: words dictated, time saved compared with
+  typing, speaking speed, and the last two weeks at a glance. Counts only, kept
+  in history.db, nothing when the history is off.
 
 ### Changed
 

@@ -61,3 +61,52 @@ def test_list_texts() -> None:
     assert details(edited, now) == "Today 14:59 · 12 s · speak-to-edit"
     assert shorten("a  b\nc") == "a b c"
     assert len(shorten("word " * 200)) < 300 and shorten("word " * 200).endswith("…")
+
+
+# --------------------------------------------------------------------------- statistics
+
+
+def test_daily_statistics(tmp_path: Path) -> None:
+    from keynone.engine.history import count_words
+
+    history = _history(tmp_path, "One two three.", "Four five.")
+    history.add(app="", title="", raw_text="shorter", final_text="A rewritten selection.",
+                audio_seconds=1.0, latency_ms=0, llm_calls=1, method="edit")  # not dictated
+    stats = history.stats(days=14)
+    assert (stats.dictations, stats.words, stats.audio_seconds) == (2, 5, 5.0)
+    assert (stats.week_dictations, stats.week_words) == (2, 5)
+    assert len(stats.days) == 14 and stats.days[-1][1] == 5 and stats.days[0][1] == 0
+    assert stats.since == stats.days[-1][0]
+    # deleting one dictation keeps the counts; clearing the history resets them
+    newest = history.last()
+    assert newest is not None
+    history.delete(newest.id)
+    assert history.stats().words == 5
+    history.clear()
+    assert history.stats().dictations == 0
+    assert count_words("Don't stop: 12 apples") == 4
+    assert count_words("你好世界 hello") == 5
+
+
+def test_statistics_count_dictations_kept_from_before(tmp_path: Path) -> None:
+    import sqlite3
+
+    db = tmp_path / "history.db"
+    old = sqlite3.connect(db)  # a 0.2 history: dictations, no daily counts
+    old.execute("CREATE TABLE dictations (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at "
+                "REAL NOT NULL, app TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT '', "
+                "raw_text TEXT NOT NULL DEFAULT '', final_text TEXT NOT NULL DEFAULT '', "
+                "audio_seconds REAL NOT NULL DEFAULT 0, latency_ms INTEGER NOT NULL DEFAULT 0, "
+                "llm_calls INTEGER NOT NULL DEFAULT 0, method TEXT NOT NULL DEFAULT '')")
+    old.execute("INSERT INTO dictations (created_at, final_text, audio_seconds, method) "
+                "VALUES (?, 'Hello there.', 2.0, 'paste')", (time.time() - 86400 * 3,))
+    old.commit()
+    old.close()
+    history = History(db)
+    stats = history.stats()
+    assert (stats.dictations, stats.words) == (1, 2)
+    assert stats.week_words == 2 and stats.days[-4][1] == 2
+    history.close()
+    again = History(db)  # counted once, not on every start
+    assert again.stats().dictations == 1
+    again.close()
