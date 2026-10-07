@@ -246,6 +246,16 @@ def key_from_event(keysym: str, keycode: int) -> tuple[str, str] | None:
     return (name, name) if name else None
 
 
+def same_keys(a: str, b: str) -> bool:
+    """Whether two shortcut texts name the same keys ("ctrl+win" == "Win + Ctrl")."""
+    if not a.strip() or not b.strip():
+        return not a.strip() and not b.strip()
+    try:
+        return set(Chord.parse(a).names) == set(Chord.parse(b).names)
+    except ValueError:
+        return False
+
+
 def chord_text(keys: Sequence[tuple[str, str]]) -> str:
     """"ctrl+win" from the keys of a recorded combination, in the usual order.
 
@@ -304,8 +314,12 @@ class HotkeyControl(Control):
         problem = hotkey_problem(self.key, text, self._values())
         self.combo.state(["invalid" if problem else "!invalid"])
         self.host.problem(self.key, problem)
-        if problem is None:
-            self.host.edited(self.key, "+".join(Chord.parse(text).names) if text else "")
+        if problem is not None:
+            return
+        saved = self.host.model.saved(self.key)
+        # "Ctrl + Win" in the file and "ctrl+win" here are the same keys: no change.
+        self.host.edited(self.key, saved if same_keys(text, saved) else
+                         "+".join(Chord.parse(text).names) if text else "")
 
     # ----------------------------------------------------------------- recording
 

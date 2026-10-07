@@ -89,8 +89,10 @@ class FakeSystem(System):
         self.calls.append(("terminal", *args))
 
 
-@pytest.fixture
-def root() -> Iterator[tk.Tk]:
+@pytest.fixture(scope="module")
+def _tk() -> Iterator[tk.Tk]:
+    # One Tk for all tests: creating many interpreters in one process now and then
+    # fails inside Tcl ('invalid command name "tcl_findLibrary"').
     try:
         window = tk.Tk()
     except tk.TclError as exc:  # pragma: no cover - no display
@@ -98,6 +100,15 @@ def root() -> Iterator[tk.Tk]:
     window.withdraw()
     yield window
     window.destroy()
+
+
+@pytest.fixture
+def root(_tk: tk.Tk) -> Iterator[tk.Tk]:
+    yield _tk
+    for job in _tk.tk.splitlist(_tk.tk.call("after", "info")):
+        _tk.after_cancel(job)  # e.g. the window's file watcher
+    for child in _tk.winfo_children():
+        child.destroy()
 
 
 @pytest.fixture
@@ -309,6 +320,23 @@ def test_changes_made_in_a_text_editor_are_picked_up(root: tk.Tk, paths: Paths) 
     assert app.model.get("audio.cues") is False
     cues = app.controls["audio.cues"]
     assert isinstance(cues, SwitchControl) and cues.var.get() is False
+
+
+def test_a_shortcut_written_differently_is_not_an_unsaved_change(root: tk.Tk,
+                                                                 paths: Paths) -> None:
+    text = paths.config_file.read_text(encoding="utf-8")
+    paths.config_file.write_text(text.replace('dictate = "ctrl+win"', 'dictate = "Ctrl + Win"'),
+                                 encoding="utf-8")
+    app, _ = _app(root, paths)
+    assert app._changes() == 0 and not app.problems
+    dictate = app.controls["hotkeys.dictate"]
+    assert isinstance(dictate, HotkeyControl)
+    dictate.var.set("win+ctrl")  # the same keys: still nothing to save
+    dictate._commit()
+    assert app._changes() == 0
+    dictate.var.set("f9")
+    dictate._commit()
+    assert app.model.changed_keys() == ["hotkeys.dictate"]
 
 
 def test_an_unusable_shortcut_in_the_file_is_flagged(root: tk.Tk, paths: Paths) -> None:

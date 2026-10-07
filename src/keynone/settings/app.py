@@ -744,6 +744,19 @@ def _bring_existing_to_front() -> bool:
     return True
 
 
+def _new_tk(attempts: int = 3) -> tk.Tk:
+    """tk.Tk(), retried: Tcl's start-up occasionally fails once on Windows
+    ('invalid command name "tcl_findLibrary"') and works on the next try."""
+    for attempt in range(attempts):
+        try:
+            return tk.Tk()
+        except tk.TclError:
+            if attempt == attempts - 1:
+                raise
+            log.warning("Tk did not start; trying again", exc_info=True)
+    raise AssertionError("unreachable")
+
+
 def run_settings(paths: Paths | None = None) -> int:
     from keynone.logging_setup import setup_logging
     from keynone.win32 import api
@@ -762,7 +775,7 @@ def run_settings(paths: Paths | None = None) -> int:
             ctypes.windll.shcore.SetProcessDpiAwareness(1)  # crisp text at 125 % / 150 %
         with contextlib.suppress(AttributeError, OSError):
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Keynone.Settings")
-        root = tk.Tk()
+        root = _new_tk()
         root.withdraw()
         icon = write_icon(paths.cache / "icons" / "idle.ico", BRAND_RGB)
         with contextlib.suppress(tk.TclError):
