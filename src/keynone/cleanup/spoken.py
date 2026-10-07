@@ -365,6 +365,94 @@ def _addresses(tokens: list[_Token], style: str) -> list[_Token]:
     return out
 
 
+# --------------------------------------------------------------------------- code words
+
+# Code and prompt styles: "camel case user name" -> userName.
+_CASINGS: dict[tuple[str, ...], str] = {
+    ("camel", "case"): "camel", ("camelcase",): "camel", ("pascal", "case"): "pascal",
+    ("snake", "case"): "snake", ("kebab", "case"): "kebab", ("constant", "case"): "constant",
+    ("all", "caps"): "upper",
+}
+# Words that end a cased name: "camel case first name to camel case full name", "a snake
+# case get user by id function".
+_CASE_STOP = frozenset(
+    """to and or in on with for the a an please then so but from into as is are was were that
+    which because if when while it this at function functions method methods variable
+    variables class classes field fields property properties parameter parameters argument
+    arguments component components module modules hook hooks constant constants type types
+    interface enum struct table tables column columns endpoint route file files folder
+    directory test tests""".split()
+)
+# "look at main.py" is English; "explain at main.py" mentions the file (@main.py).
+_AT_VERBS = frozenset(
+    """look looks looking looked see sees seeing saw check checks checking checked glance stare
+    point points pointing aim arrive arrived located defined declared found is are was were be
+    been starts start started ends end ended stop stops begins lives sits line column
+    character open opened opens stored saved what what's whats there here""".split()
+)
+_FILE_TOKEN_RE = re.compile(r"[\w./\\-]+\.([A-Za-z0-9]+)")
+
+
+def _cased(words: list[str], how: str) -> str:
+    lowered = [w.lower() for w in words]
+    if how == "camel":
+        return lowered[0] + "".join(w.capitalize() for w in lowered[1:])
+    if how == "pascal":
+        return "".join(w.capitalize() for w in lowered)
+    if how == "snake":
+        return "_".join(lowered)
+    if how == "kebab":
+        return "-".join(lowered)
+    return "_".join(w.upper() for w in lowered)  # constant case, and "all caps" (one word)
+
+
+def _casing(tokens: list[_Token]) -> list[_Token]:
+    """ "snake case get user by id" -> get_user_by_id (up to four words; "all caps" one)."""
+    out: list[_Token] = []
+    i = 0
+    while i < len(tokens):
+        how, n = "", 0
+        for words, name in _CASINGS.items():
+            span = tokens[i:i + len(words)]
+            if tuple(t.word for t in span) == words and all(t.bare for t in span):
+                how, n = name, len(words)
+                break
+        j = i + n
+        words_found: list[str] = []
+        while how and j < len(tokens) and len(words_found) < (1 if how == "upper" else 4):
+            token = tokens[j]
+            if token.lead or not re.fullmatch(r"[A-Za-z0-9]+", token.core) \
+                    or token.word in _CASE_STOP:
+                break
+            words_found.append(token.core)
+            j += 1
+            if token.trail:
+                break
+        if not words_found:
+            out.append(tokens[i])
+            i += 1
+            continue
+        out.append(_Token(tokens[i].lead, _cased(words_found, how), tokens[j - 1].trail))
+        i = j
+    return out
+
+
+def _mentions(tokens: list[_Token]) -> list[_Token]:
+    """Prompt style: "explain at main dot py" -> "explain @main.py" (how Claude Code,
+    Cursor and others refer to files), but "look at main.py" stays English."""
+    out: list[_Token] = []
+    for token in tokens:
+        file = _FILE_TOKEN_RE.fullmatch(token.core)
+        if (file and file.group(1).lower() in _EXTENSIONS and not token.lead and out
+                and out[-1].word == "at" and out[-1].bare
+                and (len(out) < 2 or out[-2].word not in _AT_VERBS)):
+            at = out.pop()
+            out.append(_Token(at.lead, f"@{token.core}", token.trail))
+            continue
+        out.append(token)
+    return out
+
+
 # --------------------------------------------------------------------------- marks
 
 
@@ -476,6 +564,7 @@ def _adjust_case(token: _Token, symbol: str) -> _Token:
 
 
 _TRIGGER_RE = re.compile(r"(?i)\b(?:{}|dot|at)\b".format("|".join(sorted(_FIRST_WORDS))))
+_CODE_TRIGGER_RE = re.compile(r"(?i)\b(?:case|camelcase|caps)\b")
 _SAYING_RE = re.compile(
     r"(?i)\b(?:said|says|say|asked|asks|wrote|writes|replied|replies|answered|answers|told"
     r"|tells|yelled|shouted|whispered|added|adds|thought|goes)\b"
@@ -503,9 +592,14 @@ def convert(text: str, *, style: str = "default", before: str = "") -> Converted
     missing"). ``style`` is the app's style: in the code and prompt styles "dash" is a
     hyphen that sticks to the next word ("dash dash help" -> "--help").
     """
-    if not _TRIGGER_RE.search(text):
+    code = style in ("code", "prompt")
+    if not _TRIGGER_RE.search(text) and not (code and _CODE_TRIGGER_RE.search(text)):
         return Converted(text)
     tokens = _addresses(_tokenize(text), style)
+    if code:
+        tokens = _casing(tokens)
+    if style == "prompt":
+        tokens = _mentions(tokens)
     items: list[_Out] = []
     marks: Counter[str] = Counter()
     case_after = ""

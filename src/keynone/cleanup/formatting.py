@@ -222,6 +222,71 @@ def adapt_to_context(text: str, before: str, after: str, *, style: Style,
     return lead_breaks + leading + body + trail_breaks + trailing
 
 
+# Programs that start a command line. Only names that are not everyday words: "find the
+# bug in the parser" and "make sure the tests pass" are prompts, not commands.
+_CLI_COMMANDS = frozenset(
+    """git gh npm npx pnpm pnpx yarn corepack uv uvx pip pipx python python3 py node deno bun
+    nvm fnm pyenv cd ls dir mkdir rmdir rm del cls pwd whoami curl wget docker kubectl helm
+    cargo rustc rustup dotnet mvn gradle ssh scp winget choco scoop wsl pwsh powershell cmd
+    terraform aws az gcloud ollama keynone ipconfig netstat tasklist taskkill sudo apt brew
+    cmake ffmpeg jq tar unzip vim nvim nano emacs conda poetry pytest ruff mypy eslint
+    prettier tsc vite flutter adb javac gcc clang chmod chown grep rg sed awk systemctl
+    journalctl claude codex gemini aider opencode""".split()
+)
+_SINGLE_WORD_COMMANDS = frozenset("exit clear".split())  # only when said on their own
+# Words that make a line starting with a program name prose: "git is slow today".
+_PROSE_WORDS = frozenset(
+    """the a an to please can could would should you it is are was were we i that this and
+    but why what how which when there their they my your our""".split()
+)
+_CODE_TOKEN_RE = re.compile(
+    r"(?:^|\s)(?:--?[A-Za-z][\w-]*|\.{1,2}[/\\]\S*|~[/\\]\S*|[/\\]\S+|\S+=\S*|\||&&|\$\w+)"
+    r"(?=\s|$)")
+_IDENTIFIER_RE = re.compile(r"[@#]?[A-Za-z_][\w.$/\\-]*")
+
+
+def looks_like_command(text: str) -> bool:
+    """A command line or a lone identifier rather than a sentence: "git status", "npm run
+    dev", "cd src", "userName", "@main.py" - but not "git is slow today"."""
+    stripped = text.strip().rstrip(".")
+    words = stripped.split()
+    if not words or "\n" in stripped:
+        return False
+    first = words[0].lower()
+    if len(words) == 1:
+        token = words[0]
+        return bool(_IDENTIFIER_RE.fullmatch(token)) and (
+            first in _CLI_COMMANDS or first in _SINGLE_WORD_COMMANDS
+            or any(c in token for c in "._@/\\$")
+            or (token[:1].islower() and any(c.isupper() for c in token[1:])))  # camelCase
+    if first not in _CLI_COMMANDS:
+        return False
+    if _CODE_TOKEN_RE.search(stripped):
+        return True
+    return len(words) <= 3 or not any(w.lower().strip(",.?!") in _PROSE_WORDS
+                                      for w in words[1:])
+
+
+def effective_style(style: Style, text: str) -> Style:
+    """The style one dictation is written in. The prompt style writes a sentence as prose
+    ("default") and a command or identifier as it was said ("code")."""
+    if style == "prompt":
+        return "code" if looks_like_command(text) else "default"
+    return style
+
+
+def as_command(text: str) -> str:
+    """A command as typed: no sentence capital on the program, no closing period."""
+    text = text.strip()
+    if text.endswith(".") and not text.endswith(".."):
+        text = text[:-1]
+    first = text.split(" ", 1)[0]
+    lowered = first.lower()
+    if (lowered in _CLI_COMMANDS or lowered in _SINGLE_WORD_COMMANDS) and first[1:].islower():
+        text = lowered + text[len(first):]
+    return text
+
+
 def _short_line_list(text: str) -> bool:
     """The last line is a short label in a multi-line text ("Milk\\nEggs",
     "Best regards\\nAamir"): no period."""

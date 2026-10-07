@@ -25,7 +25,7 @@ release the key, **0 % CPU** while idle.
 | Voice commands | "new line", "new paragraph" (also mid-sentence), "scratch that" (removes what you said since your last pause) |
 | Spoken punctuation | "comma", "period", "question mark", "colon", "open bracket"…, and addresses: "jane dot doe at example dot com" → jane.doe@example.com, "main dot py" → main.py. The words stay words where they belong ("the Oxford comma", "a period of time"); "literal comma" types the word |
 | Quiet microphones | Speech too quiet for the recognizer is lifted automatically (normal levels are left alone) |
-| App-aware | Chat apps (no trailing period), e-mail, terminals/code editors (no LLM, no extra space) |
+| App-aware | Chat apps (no trailing period), e-mail, and a prompt style for AI assistants in terminals, code editors and AI apps (Claude Code, Cursor, ChatGPT…): sentences as prose, commands as you said them ("git status"), "camel case user name" → userName, "at main dot py" → @main.py |
 | Personal dictionary | Your spellings for names and jargon |
 | History | Local SQLite; "Copy last dictation" in the tray |
 | Private & contained | Offline after setup; every file lives inside this folder |

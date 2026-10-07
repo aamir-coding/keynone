@@ -21,7 +21,9 @@ from keynone.paths import Paths, get_paths
 
 log = logging.getLogger(__name__)
 
-Style = Literal["default", "chat", "email", "code"]
+# "prompt": text for AI assistants (Claude Code, Cursor, ChatGPT ...) - sentences are
+# written as prose, a dictated command or identifier as it is (see formatting.py).
+Style = Literal["default", "chat", "email", "code", "prompt"]
 LlmMode = Literal["auto", "always", "off"]
 InsertMethod = Literal["paste", "type"]
 
@@ -173,25 +175,33 @@ BUILTIN_PROFILES: tuple[AppProfile, ...] = (
         match=["outlook.exe", "olk.exe", "thunderbird.exe", "hxoutlook.exe"],
         style="email",
     ),
+    # Terminals and editors: mostly prompts for AI assistants (Claude Code, Codex,
+    # Cursor ...) these days, sometimes a command. The prompt style writes the one as
+    # prose and the other as it was said.
     AppProfile(
         name="terminal",
         match=[
             "windowsterminal.exe", "wt.exe", "cmd.exe", "powershell.exe", "pwsh.exe",
             "conhost.exe", "openconsole.exe", "wezterm-gui.exe", "alacritty.exe",
         ],
-        style="code",
+        style="prompt",
         copy_keys="ctrl+insert",  # Ctrl+C would interrupt the running program
         trailing_space=False,
-        llm_mode="off",
     ),
-    AppProfile(name="mintty", match=["mintty.exe"], style="code", paste_keys="shift+insert",
-               copy_keys="ctrl+insert", trailing_space=False, llm_mode="off"),
+    AppProfile(name="mintty", match=["mintty.exe"], style="prompt", paste_keys="shift+insert",
+               copy_keys="ctrl+insert", trailing_space=False),
     AppProfile(
         name="code",
         match=["code.exe", "cursor.exe", "windsurf.exe", "idea64.exe", "pycharm64.exe",
                "devenv.exe", "sublime_text.exe", "notepad++.exe", "zed.exe"],
-        style="code",
+        style="prompt",
         trailing_space=False,
+    ),
+    AppProfile(
+        name="ai",
+        match=["claude.exe", "chatgpt.exe"],
+        title_match=["claude", "chatgpt", "gemini", "perplexity", "copilot", "deepseek"],
+        style="prompt",
     ),
 )
 
