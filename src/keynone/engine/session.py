@@ -197,6 +197,8 @@ class Session:
             llm_timeout=cfg.cleanup.llm_timeout_seconds,
             language=cfg.asr.language,
             translate_to=cfg.cleanup.translate_to,
+            spoken_punctuation=cfg.cleanup.spoken_punctuation,
+            style=self.profile.style,
         )
 
     def _process(self) -> SessionOutcome:
@@ -255,7 +257,8 @@ class Session:
         for sentence in self._segmenter.update(raw, flush=True):
             self._pipeline.add_sentence(sentence)
         result = self._pipeline.finish(timeout=cfg.cleanup.llm_timeout_seconds + 0.5)
-        return self._deliver(raw, result.text, result.llm_calls, stream.seconds)
+        return self._deliver(raw, result.text, result.llm_calls, stream.seconds,
+                             spoken_end=result.spoken_end)
 
     # ----------------------------------------------------------------- dictation
 
@@ -279,11 +282,12 @@ class Session:
             fitted = formatting.adapt_to_context(text, context.before, context.after,
                                                  style=profile.style, trailing_space=trailing)
             return fitted, False
-        if trailing and text and not text.endswith("\n"):
+        if trailing and text and not text.endswith(("\n", "(", "[", "{")):
             text += " "
         return text, False
 
-    def _deliver(self, raw: str, cleaned: str, llm_calls: int, seconds: float) -> SessionOutcome:
+    def _deliver(self, raw: str, cleaned: str, llm_calls: int, seconds: float, *,
+                 spoken_end: bool = False) -> SessionOutcome:
         target: WindowInfo = window_info()  # wherever the user is now
         profile = self.config.profile_for(target.exe, target.title)
         trailing = (profile.trailing_space if profile.trailing_space is not None
@@ -291,7 +295,8 @@ class Session:
         text = formatting.finalize(
             cleaned,
             style=profile.style,
-            drop_final_period=bool(profile.drop_final_period),
+            # A period the user said ("... see you soon period") stays, even in chats.
+            drop_final_period=bool(profile.drop_final_period) and not spoken_end,
             trailing_space=False,
         )
         base = self._base(raw, seconds, llm_calls)

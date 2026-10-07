@@ -71,6 +71,8 @@ class CleanupConfig:
     llm_mode: LlmMode = "auto"
     remove_fillers: bool = True
     voice_commands: bool = True
+    # "comma", "question mark", "jane dot doe at example dot com" ... (English).
+    spoken_punctuation: bool = True
     llm_timeout_seconds: float = 4.0
     # Write every dictation in this language, e.g. "English" or "es" ("" = off).
     translate_to: str = ""

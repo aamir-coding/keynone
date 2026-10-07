@@ -6,6 +6,17 @@ Notable changes to Keynone. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Spoken punctuation:** say "comma", "period", "question mark", "colon",
+  "open bracket", "end quote", "hyphen"… to type the mark. Keynone tells the mark
+  from the word by the words around it ("the Oxford comma", "a period of time",
+  "colon cancer" stay words), and "literal comma" always types the word. A
+  dictation that is only "question mark" inserts "?". Settings → Cleanup.
+- **Spoken addresses:** "jane dot doe at example dot com" (or "at the rate")
+  becomes jane.doe@example.com; web addresses ("example dot com slash pricing")
+  and file names ("main dot py") are written the way they look.
+
 ## [0.2.0] - 2026-10-07
 
 ### Added

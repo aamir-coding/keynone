@@ -59,6 +59,10 @@ llm_mode = "auto"
 remove_fillers = true
 # Spoken "new line", "new paragraph", "scratch that".
 voice_commands = true
+# Say "comma", "period", "question mark", "colon", "open bracket" ... to type the mark,
+# and spell out addresses: "jane dot doe at example dot com", "main dot py".
+# "literal comma" types the word. English only.
+spoken_punctuation = true
 # If the LLM is slower than this, the rule-based text is used instead.
 llm_timeout_seconds = 4.0
 # Write every dictation in another language, e.g. "English", "Spanish", "hi".

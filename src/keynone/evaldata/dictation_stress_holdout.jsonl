@@ -97,3 +97,17 @@
 {"id": "h-mix-party-list", "cat": "mix", "say": ["For the party we need three things.", "Number one, drinks.", "Number two, uh, snacks.", "Scratch that.", "Number two, music.", "And number three, snacks."], "expect": "For the party we need three things:\n1. Drinks\n2. Music\n3. Snacks"}
 {"id": "h-mix-meet-then-park", "cat": "mix", "say": ["So I was thinking we could, um, meet at two, no, three, and then go to the park."], "expect": "So I was thinking we could meet at three, and then go to the park."}
 {"id": "h-mix-fast-report", "cat": "mix", "rate": "+40%", "say": ["Hey, can you send me the report by Friday, no, Thursday? Thanks."], "expect": "Hey, can you send me the report by Thursday? Thanks."}
+{"id": "h-pun-greeting", "cat": "punct", "say": ["Hi Sam comma thanks for the update period talk soon"], "expect": "Hi Sam, thanks for the update. Talk soon."}
+{"id": "h-pun-question", "cat": "punct", "say": ["what time is it question mark"], "expect": "What time is it?"}
+{"id": "h-pun-brackets", "cat": "punct", "say": ["The total is ten dollars open bracket including tax close bracket."], "expect": "The total is ten dollars (including tax)."}
+{"id": "h-pun-email-dots", "cat": "punct", "say": ["Send it to my dot name at example dot com."], "expect": "Send it to my.name@example.com."}
+{"id": "h-pun-url", "cat": "punct", "say": ["Visit example dot com slash pricing for details."], "expect": "Visit example.com/pricing for details."}
+{"id": "h-pun-file", "cat": "punct", "say": ["The report is in notes dot txt."], "expect": "The report is in notes.txt."}
+{"id": "h-pun-colon", "cat": "punct", "say": ["Agenda colon budget and hiring."], "expect": "Agenda: budget and hiring."}
+{"id": "h-pun-exclamation-point", "cat": "punct", "say": ["Thanks exclamation point"], "expect": "Thanks!"}
+{"id": "h-pun-quote", "cat": "punct", "say": ["She said quote not today end quote."], "expect": "She said \"not today\"."}
+{"id": "h-pun-trap-semicolon", "cat": "punct", "say": ["Use a semicolon between the clauses."], "expect": "Use a semicolon between the clauses."}
+{"id": "h-pun-trap-colon-cancer", "cat": "punct", "say": ["Check the colon cancer statistics."], "expect": "Check the colon cancer statistics."}
+{"id": "h-pun-trap-quote-unquote", "cat": "punct", "say": ["She paid a quote unquote small fee."], "expect": "She paid a quote unquote small fee."}
+{"id": "h-pun-trap-ends-with", "cat": "punct", "say": ["It ends with a question mark."], "expect": "It ends with a question mark."}
+{"id": "h-pun-trap-waiting-period", "cat": "punct", "say": ["There is a waiting period of two weeks."], "expect": "There is a waiting period of two weeks."}

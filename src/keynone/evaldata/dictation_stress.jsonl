@@ -251,3 +251,35 @@
 {"id": "mix-fast-correction", "cat": "mix", "rate": "+40%", "say": ["Book the room for Tuesday at two no wait Wednesday at three and invite the whole team."], "expect": "Book the room for Wednesday at three and invite the whole team."}
 {"id": "mix-fast-everything", "cat": "mix", "rate": "+40%", "say": ["Um so the the plan is uh we launch on Monday no Tuesday new paragraph first update the docs second email the team."], "expect": "So the plan is we launch on Tuesday.\n\n1. Update the docs\n2. Email the team"}
 {"id": "mix-chat-message", "cat": "mix", "say": ["Hey, are you free for lunch tomorrow?", "Maybe around one, no wait, one thirty?"], "expect": "Hey, are you free for lunch tomorrow? Maybe around one thirty?"}
+{"id": "pun-letter", "cat": "punct", "say": ["Dear John comma I hope you are well period see you soon exclamation mark"], "expect": "Dear John, I hope you are well. See you soon!"}
+{"id": "pun-question", "cat": "punct", "say": ["is it ready question mark"], "expect": "Is it ready?"}
+{"id": "pun-semicolon", "cat": "punct", "say": ["The meeting is at five semicolon bring your laptop."], "expect": "The meeting is at five; bring your laptop."}
+{"id": "pun-brackets", "cat": "punct", "say": ["Call me open bracket after five close bracket tomorrow."], "expect": "Call me (after five) tomorrow."}
+{"id": "pun-brackets-pause", "cat": "punct", "say": ["Call me open bracket", "after five close bracket tomorrow"], "expect": "Call me (after five) tomorrow."}
+{"id": "pun-quote", "cat": "punct", "say": ["He said quote I am done end quote and left."], "expect": "He said \"I am done\" and left."}
+{"id": "pun-colon-inline", "cat": "punct", "say": ["We need three things colon milk comma eggs and bread."], "expect": "We need three things: milk, eggs and bread."}
+{"id": "pun-period-pause", "cat": "punct", "say": ["I hope you are well", "period", "see you soon"], "expect": "I hope you are well. See you soon."}
+{"id": "pun-comma-pause", "cat": "punct", "say": ["Dear Priya", "comma", "thanks for the notes"], "expect": "Dear Priya, thanks for the notes."}
+{"id": "pun-only-question", "cat": "punct", "say": ["question mark"], "expect": "?"}
+{"id": "pun-email", "cat": "punct", "say": ["My email is jane dot doe at example dot com."], "expect": "My email is jane.doe@example.com."}
+{"id": "pun-email-rate", "cat": "punct", "say": ["Write to sales at the rate example dot co dot in."], "expect": "Write to sales@example.co.in."}
+{"id": "pun-url", "cat": "punct", "say": ["The docs are at docs dot example dot org slash setup."], "expect": "The docs are at docs.example.org/setup."}
+{"id": "pun-file", "cat": "punct", "say": ["Open main dot py and fix the bug."], "expect": "Open main.py and fix the bug."}
+{"id": "pun-hyphen", "cat": "punct", "say": ["It's a well hyphen known issue."], "expect": "It's a well-known issue."}
+{"id": "pun-slash", "cat": "punct", "say": ["Use Figma slash Miro for the boards."], "expect": "Use Figma/Miro for the boards."}
+{"id": "pun-exclamation-pause", "cat": "punct", "say": ["That is great", "exclamation mark"], "expect": "That is great!"}
+{"id": "pun-literal", "cat": "punct", "say": ["Type the word literal comma here."], "expect": "Type the word comma here."}
+{"id": "pun-trap-oxford", "cat": "punct", "say": ["I always use the Oxford comma."], "expect": "I always use the Oxford comma."}
+{"id": "pun-trap-add-comma", "cat": "punct", "say": ["Add a comma after the greeting."], "expect": "Add a comma after the greeting."}
+{"id": "pun-trap-period-of", "cat": "punct", "say": ["Over a period of three weeks we tested it."], "expect": "Over a period of three weeks we tested it."}
+{"id": "pun-trap-trial-period", "cat": "punct", "say": ["The trial period ends on Friday."], "expect": "The trial period ends on Friday."}
+{"id": "pun-trap-colon", "cat": "punct", "say": ["The colon is part of the digestive system."], "expect": "The colon is part of the digestive system."}
+{"id": "pun-trap-question-mark", "cat": "punct", "say": ["There is a question mark over the budget."], "expect": "There is a question mark over the budget."}
+{"id": "pun-trap-brackets", "cat": "punct", "say": ["Put the names in brackets."], "expect": "Put the names in brackets."}
+{"id": "pun-trap-dash", "cat": "punct", "say": ["I have to dash to the station."], "expect": "I have to dash to the station."}
+{"id": "pun-trap-dash-salt", "cat": "punct", "say": ["Add a dash of salt."], "expect": "Add a dash of salt."}
+{"id": "pun-trap-quote", "cat": "punct", "say": ["Can you get a quote from the vendor?"], "expect": "Can you get a quote from the vendor?"}
+{"id": "pun-trap-dot-com", "cat": "punct", "say": ["It was a dot com company."], "expect": "It was a dot com company."}
+{"id": "pun-trap-slash", "cat": "punct", "say": ["We need to slash the budget."], "expect": "We need to slash the budget."}
+{"id": "pun-trap-commas", "cat": "punct", "say": ["Commas and periods are easy to mix up."], "expect": "Commas and periods are easy to mix up."}
+{"id": "pun-trap-full-stop", "cat": "punct", "say": ["The car came to a full stop."], "expect": "The car came to a full stop."}

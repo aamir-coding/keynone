@@ -257,7 +257,8 @@ def tidy(text: str, language: str = "en") -> str:
     text = text.replace("...", "…")
     text = re.sub(r"[ \t\f\v]+", " ", text)
     text = re.sub(r" *\n *", "\n", text)
-    text = re.sub(r" +([,;:.!?…])", r"\1", text)
+    text = re.sub(r" +([,;:.!?…)\]}])", r"\1", text)
+    text = re.sub(r"([(\[{]) +", r"\1", text)  # a spoken bracket next to a pause
     text = re.sub(r"[,;:.!?](?:\s*[,;:.!?])+", _collapse_punct, text)
     text = re.sub(r"(^|\n)[\s,;:.]+", r"\1", text)
     text = re.sub(r"([,;])(?=[^\W\d_])", r"\1 ", text)
@@ -1584,7 +1585,7 @@ def _implicit_list(sentence: str) -> str | None:
     return _assemble_list(intro, [f"{n}. {item}" for n, item in enumerate(items, start=1)])
 
 
-def _format_block(text: str) -> str | None:
+def _format_block(text: str, implicit: bool = True) -> str | None:
     bullets = list(_BULLET_RE.finditer(text))
     if len(bullets) >= 2:
         intro = text[: bullets[0].start()].strip()
@@ -1596,30 +1597,34 @@ def _format_block(text: str) -> str | None:
     listed = _marker_list(text)
     if listed is not None:
         return listed
+    if not implicit:
+        return None
     sentences = split_sentences(text)
     for index, sentence in enumerate(sentences):
-        implicit = _implicit_list(sentence)
-        if implicit is not None:
+        found = _implicit_list(sentence)
+        if found is not None:
             before = join_sentences(sentences[:index])
             after = join_sentences(sentences[index + 1 :])
-            parts = [p for p in (before, implicit, after) if p]
+            parts = [p for p in (before, found, after) if p]
             return "\n".join(parts)
     return None
 
 
-def format_spoken_list(text: str) -> str | None:
+def format_spoken_list(text: str, *, implicit: bool = True) -> str | None:
     """Turn enumerated speech into numbered or bulleted lists.
 
     Each line (or paragraph) is handled on its own. Returns ``None`` when
     nothing looks like a list: fewer than two ordinal markers in sequence,
     no count-announced enumeration and no "bullet point" commands.
+    ``implicit=False`` keeps "we need three things: a, b and c" inline: the user
+    dictated its colon and commas.
     """
     lines = text.split("\n")
     changed = False
     for index, line in enumerate(lines):
         if not line.strip() or re.match(r"^\s*(?:\d+[.)]|[-*•])\s", line):
             continue
-        formatted = _format_block(line)
+        formatted = _format_block(line, implicit)
         if formatted is not None:
             lines[index] = formatted
             changed = True

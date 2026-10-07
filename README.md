@@ -23,6 +23,7 @@ release the key, **0 % CPU** while idle.
 | Live preview | Overlay with level meter and the latest text; never steals focus |
 | Hands-free | Double-tap the hotkey; tap again to finish; Esc cancels |
 | Voice commands | "new line", "new paragraph" (also mid-sentence), "scratch that" (removes what you said since your last pause) |
+| Spoken punctuation | "comma", "period", "question mark", "colon", "open bracket"…, and addresses: "jane dot doe at example dot com" → jane.doe@example.com, "main dot py" → main.py. The words stay words where they belong ("the Oxford comma", "a period of time"); "literal comma" types the word |
 | Quiet microphones | Speech too quiet for the recognizer is lifted automatically (normal levels are left alone) |
 | App-aware | Chat apps (no trailing period), e-mail, terminals/code editors (no LLM, no extra space) |
 | Personal dictionary | Your spellings for names and jargon |
