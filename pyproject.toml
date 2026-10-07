@@ -1,6 +1,6 @@
 [project]
 name = "keynone"
-version = "0.2.0"
+version = "0.3.0"
 description = "Local, private, Typeless-style AI voice dictation for Windows: streaming ASR with live preview plus local LLM cleanup, inserted into any app."
 readme = "README.md"
 license = "MIT"

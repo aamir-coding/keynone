@@ -180,10 +180,43 @@ does. With a noisy microphone (a fixed noise floor at -60 dBFS) the results are
 the same with and without the boost: speech that barely stands out from the noise
 is left alone.
 
-## 1.8 Known limitations
+## 1.8 Testing the v0.3 features (October 2026)
+
+**Spoken punctuation.** 46 new stress cases (32 in the main set, 14 held out),
+half of them sentences where the word must stay a word ("the Oxford comma", "a
+period of three weeks", "a dash of salt", "quote unquote"):
+
+| | punctuated | run-on | no punctuation | neither |
+|---|---|---|---|---|
+| Rules only, 46 cases | 46 | 46 | 46 | 46 |
+| With LFM2.5, 46 cases | 46 | 46 | 46 | 46 |
+
+Spoken by five voices through the recognizer: **228 of 230** right; both misses
+are recognition errors ("end quote" heard as "in court", "dot org" as "dot
+organization"). The recognizer drops a spoken "dash" altogether and often
+"quote", so command lines take "hyphen" or "minus" (`git commit -m`).
+
+**No regression.** On the 352 existing cases v0.3 gives exactly the output of
+v0.2.0's cleanup code: rules only in all four recognizer styles, and the 1,200
+real-speech recordings replayed rules only and with LFM2.5 (0 outputs changed;
+measured by running both versions on the same recordings). `keynone bench
+cleanup`: 34/34, p95 431 ms. The six reference recordings give their
+documented output.
+
+**Desktop.** Learning a corrected name works against real Win32 EDIT and
+RichEdit boxes (the control family of Notepad) through UI Automation; the
+paste-last shortcut works through the real keyboard hook (the app never sees
+the key); snippets and the prompt style were checked with synthesized speech.
+The idle listener stays at 19 MB private memory and one CPU tick a minute.
+
+## 1.9 Known limitations
 
 * English is the default; other languages use the multilingual model (slightly
   less accurate for English) and lean on rules more than the LLM.
+* The recognizer leaves out a spoken "dash" and sometimes "quote"; Keynone can't
+  put back what it never heard (say "hyphen" or "minus" for command options).
+* Learning from corrections needs the app to expose its text through UI
+  Automation (most do); it doesn't watch terminals or code-style apps.
 * Elevated (admin) windows can't receive synthetic input from a normal process
   (Windows UIPI): Keynone detects this and copies the text to the clipboard.
 * Smart spacing and password detection need UI Automation support in the target
