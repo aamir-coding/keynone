@@ -115,6 +115,12 @@ _LOWERCASE_STARTERS = function_words("en") | frozenset(
 )
 
 
+def lowercase_starter(word: str) -> bool:
+    """A common word that is written in lowercase mid-sentence (not a name, not "I")."""
+    lowered = word.lower()
+    return lowered in _LOWERCASE_STARTERS and lowered not in _KEEP_CASE
+
+
 def _first_word(text: str) -> str:
     match = re.match(r"\s*([^\s]+)", text)
     return match.group(1).strip(",.;:!?\"'()") if match else ""
@@ -200,7 +206,8 @@ def adapt_to_context(text: str, before: str, after: str, *, style: Style,
         trailing = ""
     elif multi_line or following in ("", "\n"):
         trailing = " " if (trailing_space and not is_list_line(body.rsplit("\n", 1)[-1])
-                           and not _CJK_RE.match(body[-1]) and body[-1] not in "。！？") else ""
+                           and not _CJK_RE.match(body[-1])
+                           and body[-1] not in "。！？([{") else ""
     elif following.isspace():
         trailing = ""
     elif following in _CLOSERS:
@@ -238,6 +245,9 @@ def finalize(
     lead, text, trail = _edge_breaks(text)
     if not text:
         return lead or trail
+    if not any(c.isalnum() for c in text):  # only a spoken mark: "question mark", "comma"
+        space = trailing_space and not trail and text[-1] not in "([{"
+        return lead + text + trail + (" " if space else "")
     text = normalize_lists(text)
     if style != "code":
         if trail:

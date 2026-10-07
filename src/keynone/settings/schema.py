@@ -128,6 +128,10 @@ SECTIONS: tuple[Section, ...] = (
                   "um, uh, er, and \"you know\" or \"like\" between commas.", "bool"),
             Field("cleanup.voice_commands", "Voice commands",
                   "\"new line\", \"new paragraph\" and \"scratch that\".", "bool"),
+            Field("cleanup.spoken_punctuation", "Spoken punctuation",
+                  "Say \"comma\", \"period\", \"question mark\" or \"open bracket\" to type "
+                  "the mark, and \"jane dot doe at example dot com\" for an address. Say "
+                  "\"literal comma\" to type the word. English only.", "bool"),
             Field("cleanup.llm_mode", "Polish with the local AI",
                   "The local language model fixes what the rules can't (corrections like "
                   "\"just Jordan\", soft fillers, run-on sentences). \"When needed\" keeps "
