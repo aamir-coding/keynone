@@ -16,14 +16,15 @@ import logging
 import re
 import threading
 import time
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from keynone.cleanup import formatting, guard, rules
+from keynone.cleanup import formatting, guard, rules, spoken
 from keynone.cleanup.language import base_language, detect_language, language_code, language_name
 from keynone.cleanup.prompts import PromptVariant
-from keynone.config import LlmMode
+from keynone.config import LlmMode, Style
 
 log = logging.getLogger(__name__)
 
@@ -66,6 +67,10 @@ class CleanupSettings:
     language: str = "en"
     # Target language name or code ("English", "es" ...); "" = no translation.
     translate_to: str = ""
+    # "comma", "period", "jane dot doe at example dot com" ... (English).
+    spoken_punctuation: bool = True
+    # The app's style: in "code" and "prompt" a spoken "dash" is a hyphen.
+    style: Style = "default"
 
 
 @dataclass
@@ -76,6 +81,8 @@ class CleanupResult:
     llm_accepted: int = 0
     rejections: list[str] = field(default_factory=list)
     timed_out_units: int = 0
+    # The text ends with a spoken mark ("... see you soon period"): chat apps keep it.
+    spoken_end: bool = False
 
 
 @dataclass
@@ -88,6 +95,9 @@ class _Unit:
     # Where each pause-separated fragment starts in ``raw``: "scratch that"
     # removes what was said since the last pause, not a whole run-on sentence.
     fragments: list[int] = field(default_factory=lambda: [0])
+    # Marks the user said ("comma" ...): the LLM may not drop them.
+    spoken: Counter[str] = field(default_factory=Counter)
+    ends_spoken: bool = False  # the last fragment ended with a spoken mark
 
 
 def _word_count(text: str) -> int:
@@ -114,6 +124,9 @@ class CleanupPipeline:
         self._cancelled = False
         self._deadline: float | None = None
         self._result = CleanupResult(text="")
+        # Spoken marks the dictation started with ("comma, and then ..."): they go
+        # before the text, which can't be cleaned with them in front.
+        self._prefix = ""
         self._worker = threading.Thread(target=self._run, name="cleanup", daemon=True)
         self._worker.start()
 
@@ -145,10 +158,12 @@ class CleanupPipeline:
         return rules.resolve_corrections(text) if language == "en" else text
 
     @staticmethod
-    def _finalize(text: str, language: str) -> str:
+    def _finalize(text: str, language: str, marks: Counter[str] | None = None) -> str:
         if language != "en":  # spoken-list detection understands English ordinals only
             return text
-        return rules.format_spoken_list(text) or text
+        # A colon or commas the user said: "three things: a, b and c" stays inline.
+        implicit = not (marks and (marks[":"] or marks[","]))
+        return rules.format_spoken_list(text, implicit=implicit) or text
 
     def _needs_llm(self, text: str, language: str) -> bool:
         if self.polisher is None or self.settings.llm_mode == "off":
@@ -181,6 +196,12 @@ class CleanupPipeline:
         if not raw:
             return
         with self._cond:
+            converted = self._convert_locked(raw)
+            raw = converted.text
+            marks = converted.marks
+            if converted.lead:
+                raw = self._attach_lead_locked(converted.lead, raw)
+                marks = marks - Counter(converted.lead)
             # The recognizer often emits a sentence's final punctuation only after
             # the pause that flushed the sentence: give it back to that sentence.
             leading = _LEADING_PUNCT_RE.match(raw)
@@ -195,8 +216,36 @@ class CleanupPipeline:
                     self._add_with_commands_locked(self._rejoin_command_locked(raw))
                 else:
                     self._append_locked(raw)
+                unit = self._last_text_unit_locked()
+                if unit is not None:
+                    unit.spoken.update(marks)
+                    unit.ends_spoken = converted.ends_with_mark
             self._cond.notify_all()
         self._notify()
+
+    def _convert_locked(self, raw: str) -> spoken.Converted:
+        """Spoken punctuation and addresses (English)."""
+        if not self.settings.spoken_punctuation or self._unit_language(raw) != "en":
+            return spoken.Converted(raw)
+        prev = self._last_text_unit_locked()
+        return spoken.convert(raw, style=self.settings.style, before=prev.raw if prev else "")
+
+    def _attach_lead_locked(self, lead: str, raw: str) -> str:
+        """Spoken marks that start a fragment end what was said before the pause
+        ("... you're well [pause] period"); returns the rest of the fragment."""
+        rest = raw[len(lead):].lstrip()
+        prev = self._last_text_unit_locked()
+        if prev is not None:
+            # The spoken mark replaces the recognizer's own punctuation there.
+            prev.raw = prev.raw.rstrip().rstrip(spoken.AUTO_PUNCT).rstrip() + lead
+            if '"' in lead:
+                prev.raw = spoken.open_quote(prev.raw)
+            prev.version += 1
+            prev.spoken.update(Counter(lead))
+            prev.ends_spoken = not rest
+        elif not self._units:
+            self._prefix += lead
+        return rest
 
     def _last_text_unit_locked(self) -> _Unit | None:
         return self._units[-1] if self._units and not self._units[-1].is_break else None
@@ -392,9 +441,9 @@ class CleanupPipeline:
                     unit = self._pending_locked()
                 if self._cancelled or unit is None:
                     return
-                raw, version = unit.raw, unit.version
+                raw, version, marks = unit.raw, unit.version, Counter(unit.spoken)
                 deadline = self._deadline
-            text = self._process(raw, deadline)
+            text = self._process(raw, deadline, marks)
             with self._cond:
                 if unit.version == version:
                     unit.polished = text
@@ -402,12 +451,13 @@ class CleanupPipeline:
                 self._cond.notify_all()
             self._notify()
 
-    def _process(self, raw: str, finish_deadline: float | None) -> str:
+    def _process(self, raw: str, finish_deadline: float | None,
+                 marks: Counter[str] | None = None) -> str:
         if unit_is_break(raw):
             return raw
         language = self._unit_language(raw)
         cleaned = self._rules_clean(raw, language)
-        fallback = self._finalize(cleaned, language)
+        fallback = self._finalize(cleaned, language, marks)
         if self.polisher is None or not self._needs_llm(cleaned, language):
             return fallback
         target = self._translation_target()
@@ -445,7 +495,12 @@ class CleanupPipeline:
         polished = rules.apply_dictionary(
             polished, self.settings.rules.words, dict(self.settings.rules.replacements)
         )
-        return self._finalize(polished, output_language)
+        lost = "" if translating else spoken.missing_mark(marks or Counter(), cleaned, polished)
+        if lost:
+            log.info("LLM output rejected: spoken %r lost", lost)
+            self._result.rejections.append(f"spoken mark {lost!r} lost")
+            return fallback
+        return self._finalize(polished, output_language, marks)
 
     def _notify(self) -> None:
         if self._on_update:
@@ -461,10 +516,12 @@ class CleanupPipeline:
         with self._cond:
             snapshot = [(u.raw, u.polished, u.done_version == u.version, u.is_break)
                         for u in self._units]
+            prefix = self._prefix
         parts = [polished if done else
                  (raw if is_break else self._rules_clean(raw, self._unit_language(raw)))
                  for raw, polished, done, is_break in snapshot]
-        return formatting.join_units(parts)
+        text = formatting.join_units(parts)
+        return spoken.after_mark(prefix, text) if prefix else text
 
     def finish(self, timeout: float) -> CleanupResult:
         """Wait (at most ``timeout`` s) for pending units and return the text."""
@@ -480,16 +537,22 @@ class CleanupPipeline:
                 self._cond.wait(remaining)
             snapshot = [(u.raw, u.polished, u.done_version == u.version, u.is_break)
                         for u in self._units]
+            unit_marks = [Counter(u.spoken) for u in self._units]
             self._result.units = sum(1 for u in self._units if not u.is_break)
+            last = self._units[-1] if self._units else None
+            self._result.spoken_end = (last.ends_spoken if last is not None and not last.is_break
+                                       else bool(self._prefix) and not self._units)
+            prefix = self._prefix
         parts = []
-        for raw, polished, done, is_break in snapshot:
+        for (raw, polished, done, is_break), marks in zip(snapshot, unit_marks, strict=True):
             if done or is_break:
                 parts.append(polished if done else raw)
             else:
                 self._result.timed_out_units += 1
                 language = self._unit_language(raw)
-                parts.append(self._finalize(self._rules_clean(raw, language), language))
-        self._result.text = formatting.join_units(parts)
+                parts.append(self._finalize(self._rules_clean(raw, language), language, marks))
+        text = formatting.join_units(parts)
+        self._result.text = spoken.after_mark(prefix, text) if prefix else text
         return self._result
 
     def cancel(self) -> None:

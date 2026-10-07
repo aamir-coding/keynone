@@ -209,8 +209,9 @@ def test_scratch_that_heard_as_cross_that() -> None:
 
 
 def test_names_after_pauses_are_not_sentences() -> None:
+    # (A spoken "slash" between two names is the mark.)
     assert dictate("Google Docs", "Notion", "Figma slash Miro boards.") == (
-        "Google Docs Notion Figma slash Miro boards."
+        "Google Docs Notion Figma/Miro boards."
     )
 
 
