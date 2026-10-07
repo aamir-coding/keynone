@@ -36,6 +36,10 @@ Notable changes to Keynone. The format follows
   on. It reads that text box only during that minute and keeps only the two
   spellings; Settings → Dictionary lists them, each with Remove
   (`dictionary.learn`).
+- **Smart warm-up:** while you dictate often, the engine stays loaded longer (up
+  to 30 minutes after your last dictation), so the next one starts at once; it
+  still unloads when you step away or battery saver is on
+  (`lifecycle.smart_warm`, Settings → General).
 - **Home page** in the settings window: whether Keynone is running, your
   shortcuts, and your statistics: words dictated, time saved compared with
   typing, speaking speed, and the last two weeks at a glance. Counts only, kept

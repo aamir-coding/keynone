@@ -152,3 +152,21 @@ def test_paste_last_says_why_it_has_nothing(app: ListenerApp,
     app.config.history.enabled = False
     app._handle(Action.PASTE_LAST)
     assert inserted == [] and "history is off" in balloons[-1]
+
+
+def test_the_engine_unloads_when_the_warm_period_ends(app: ListenerApp,
+                                                      monkeypatch: pytest.MonkeyPatch) -> None:
+    import threading
+
+    quit_called = threading.Event()
+    monkeypatch.setattr(type(app.engine), "alive", property(lambda self: True))
+    monkeypatch.setattr(app.engine, "quit", lambda wait=5.0: quit_called.set())
+    monkeypatch.setattr("keynone.win32.api.user_idle_seconds", lambda: 0.0)
+    monkeypatch.setattr("keynone.win32.api.battery_saver_on", lambda: False)
+    app._after_session(app._active_sid)  # a dictation just finished
+    now = time.monotonic()
+    app._maybe_unload(now + 299)
+    assert not quit_called.wait(0.2)
+    app._next_warm_check = 0.0
+    app._maybe_unload(now + 301)
+    assert quit_called.wait(2)
