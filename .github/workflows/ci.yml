@@ -21,7 +21,7 @@ jobs:
       # A fresh, empty Keynone folder: tests that need the downloaded models skip.
       KEYNONE_HOME: ${{ github.workspace }}\.ci-home
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: astral-sh/setup-uv@v6
         with:
