@@ -18,7 +18,7 @@ from keynone.cleanup.language import detect_language
 from keynone.cleanup.pipeline import CleanupPipeline, CleanupSettings
 from keynone.cleanup.rules import RuleOptions
 from keynone.cleanup.segmenter import SentenceSegmenter
-from keynone.config import AppProfile, Config
+from keynone.config import AppProfile, Config, Style
 from keynone.engine.history import History
 from keynone.engine.inject import Inserter
 from keynone.engine.models import EngineModels
@@ -270,8 +270,7 @@ class Session:
                     live_lag_p95_ms=int(1000 * lags[int(0.95 * (len(lags) - 1))]) if lags else 0,
                     live_lag_max_ms=int(1000 * lags[-1]) if lags else 0)
 
-    def _fit_to_cursor(self, text: str, profile: AppProfile,
-                       trailing: bool) -> tuple[str, bool]:
+    def _fit_to_cursor(self, text: str, style: Style, trailing: bool) -> tuple[str, bool]:
         """Smart spacing via UI Automation; returns (text, is_password_field)."""
         context = None
         if self.uia is not None and self.config.insert.smart_spacing and text.strip(" \t"):
@@ -280,7 +279,7 @@ class Session:
             if context.is_password:
                 return text, True
             fitted = formatting.adapt_to_context(text, context.before, context.after,
-                                                 style=profile.style, trailing_space=trailing)
+                                                 style=style, trailing_space=trailing)
             return fitted, False
         if trailing and text and not text.endswith(("\n", "(", "[", "{")):
             text += " "
@@ -292,9 +291,12 @@ class Session:
         profile = self.config.profile_for(target.exe, target.title)
         trailing = (profile.trailing_space if profile.trailing_space is not None
                     else self.config.insert.trailing_space)
+        style = formatting.effective_style(profile.style, cleaned)
+        if style == "code" and formatting.looks_like_command(cleaned):
+            cleaned = formatting.as_command(cleaned)  # "Git status." -> "git status"
         text = formatting.finalize(
             cleaned,
-            style=profile.style,
+            style=style,
             # A period the user said ("... see you soon period") stays, even in chats.
             drop_final_period=bool(profile.drop_final_period) and not spoken_end,
             trailing_space=False,
@@ -312,7 +314,7 @@ class Session:
             self.overlay.hide(800)
             return SessionOutcome(status="dry_run", text=text, latency_ms=self._latency(),
                                   **base)
-        text, password = self._fit_to_cursor(text, profile, trailing)
+        text, password = self._fit_to_cursor(text, style, trailing)
         if password:
             self.overlay.update(status="Password field - not inserted", tone="error")
             self.overlay.hide(3500)
@@ -358,7 +360,7 @@ class Session:
         selection = self.uia.selected_text(timeout=0.6) if self.uia is not None else None
         if selection:
             return selection
-        if profile.style == "code" or self.inserter is None:
+        if profile.style in ("code", "prompt") or self.inserter is None:
             return selection
         return self.inserter.copy_selection(profile)
 

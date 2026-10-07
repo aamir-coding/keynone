@@ -57,8 +57,9 @@ _LLM_MODES = (
     Option("always", "Every dictation"),
     Option("off", "Never - rules only"),
 )
-_STYLE_HELP = ("Programs are process names such as slack.exe. The chat style leaves out the "
-               "final period; the code style adds no closing period and leaves capitals alone.")
+_STYLE_HELP = ("Programs are process names such as slack.exe. Chat leaves out the final "
+               "period. Prompt, for AI assistants, writes sentences as prose and commands as "
+               "you said them. Code writes everything as you said it.")
 
 SECTIONS: tuple[Section, ...] = (
     Section(

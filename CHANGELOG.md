@@ -16,6 +16,17 @@ Notable changes to Keynone. The format follows
 - **Spoken addresses:** "jane dot doe at example dot com" (or "at the rate")
   becomes jane.doe@example.com; web addresses ("example dot com slash pricing")
   and file names ("main dot py") are written the way they look.
+- **Prompt style** for AI assistants, used in terminals, code editors and AI
+  apps (Claude Code, Codex, Cursor, ChatGPT…): a sentence is written as prose, a
+  command as you said it ("git status", "npm run dev"); "camel case user name" →
+  userName, "snake case get user by id" → get_user_by_id; "explain at main dot
+  py" → "explain @main.py". Choose it for your own profiles too.
+
+### Changed
+
+- Terminals no longer turn the local AI off: prompts dictated to Claude Code or
+  Codex get the same cleanup as everywhere else. Commands are still typed as said.
+- Code editors use the prompt style instead of the code style.
 
 ## [0.2.0] - 2026-10-07
 
