@@ -6,6 +6,8 @@ Notable changes to Keynone. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-08
+
 ### Added
 
 - **Spoken punctuation:** say "comma", "period", "question mark", "colon",
@@ -16,36 +18,37 @@ Notable changes to Keynone. The format follows
 - **Spoken addresses:** "jane dot doe at example dot com" (or "at the rate")
   becomes jane.doe@example.com; web addresses ("example dot com slash pricing")
   and file names ("main dot py") are written the way they look.
-- **Prompt style** for AI assistants, used in terminals, code editors and AI
-  apps (Claude Code, Codex, Cursor, ChatGPT…): a sentence is written as prose, a
-  command as you said it ("git status", "npm run dev"); "camel case user name" →
-  userName, "snake case get user by id" → get_user_by_id; "explain at main dot
-  py" → "explain @main.py". Choose it for your own profiles too.
-
 - **Snippets:** saved text inserted by voice. Say the phrase on its own ("my
   address"), or "insert" and the phrase while dictating ("you can reach me at
   insert my email"); the text goes in exactly as written, several lines too.
   Settings → Snippets, or `[snippets]` in config.toml.
-
-- **History page** in the settings window: search your past dictations, copy
-  one to use it again, delete one or clear them all.
-- **Paste last dictation:** Alt+Shift+V pastes your last dictation again, for
-  when it went into the wrong window (`hotkeys.paste_last`, Settings → General).
 - **Learns from your corrections:** when you fix a name Keynone typed within a
   minute ("Amid" → "Aamir", "github" → "GitHub"), it uses your spelling from then
   on. It reads that text box only during that minute and keeps only the two
   spellings; Settings → Dictionary lists them, each with Remove
   (`dictionary.learn`).
-- **Smart warm-up:** while you dictate often, the engine stays loaded longer (up
-  to 30 minutes after your last dictation), so the next one starts at once; it
-  still unloads when you step away or battery saver is on
-  (`lifecycle.smart_warm`, Settings → General).
-- **Quick toggles in the tray menu:** AI polish, spoken punctuation, sounds, the
-  live overlay, the microphone, and the language (with the language pack).
+- **Prompt style** for AI assistants, used in terminals, code editors and AI
+  apps (Claude Code, Codex, Cursor, ChatGPT…): a sentence is written as prose, a
+  command as you said it ("git status", "git commit hyphen m fix it" → `git
+  commit -m fix it`); "camel case user name" → userName, "snake case get user
+  by id" → get_user_by_id; "explain at main dot py" → "explain @main.py".
+  Choose it for your own profiles too.
+- **Paste last dictation:** Alt+Shift+V pastes your last dictation again, for
+  when it went into the wrong window (`hotkeys.paste_last`, Settings → General).
+- **History page** in the settings window: search your past dictations, copy
+  one to use it again, delete one or clear them all.
 - **Home page** in the settings window: whether Keynone is running, your
   shortcuts, and your statistics: words dictated, time saved compared with
   typing, speaking speed, and the last two weeks at a glance. Counts only, kept
   in history.db, nothing when the history is off.
+- **Quick toggles in the tray menu:** AI polish, spoken punctuation, sounds, the
+  live overlay, the microphone, and the language (with the language pack).
+- **Smart warm-up:** while you dictate often, the engine stays loaded longer (up
+  to 30 minutes after your last dictation), so the next one starts at once; it
+  still unloads when you step away or battery saver is on
+  (`lifecycle.smart_warm`, Settings → General).
+- 46 spoken-punctuation cases in the stress test (half of them sentences where
+  the word must stay a word), spoken by five voices.
 
 ### Changed
 
@@ -109,6 +112,7 @@ any app, live preview, filler and repetition removal, self-corrections, lists,
 voice commands, app profiles, dictionary, history, and a dormant listener that
 loads the speech engine only on demand.
 
-[Unreleased]: https://github.com/aamir-coding/keynone/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/aamir-coding/keynone/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/aamir-coding/keynone/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/aamir-coding/keynone/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/aamir-coding/keynone/releases/tag/v0.1.0

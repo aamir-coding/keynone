@@ -1,6 +1,6 @@
 # 2. Keynone — Software Specification
 
-Version 0.2 · Windows 10/11 x64
+Version 0.3 · Windows 10/11 x64
 
 ## 2.1 Purpose and scope
 
@@ -10,8 +10,11 @@ whichever application has the text cursor. All speech recognition and text
 processing run on the local CPU (optionally the GPU) with open-weight models;
 no network access is needed after the one-time model download. v0.1 was English
 dictation; v0.2 adds the extras (FR-34…FR-44), the settings window (FR-45…FR-50)
-and two editions, with and without the language pack (FR-51…FR-54). Out of
-scope: mobile platforms, cloud sync.
+and two editions, with and without the language pack (FR-51…FR-54); v0.3 adds
+spoken punctuation and addresses, the prompt style, snippets, the history and
+home pages, paste-last, learning from corrections, smart warm-up, quick toggles
+and settings that apply without restarts (FR-55…FR-65). Out of scope: mobile
+platforms, cloud sync.
 
 ## 2.2 Definitions
 
