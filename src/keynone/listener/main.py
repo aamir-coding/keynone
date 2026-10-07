@@ -46,7 +46,7 @@ _REC_COLOR = (229, 72, 77)
 
 # Settings only the listener uses: changing them never restarts a loaded engine.
 _LISTENER_ONLY = {
-    "hotkeys": ("dictate", "cancel", "hold_threshold_ms", "double_tap_ms"),
+    "hotkeys": ("dictate", "cancel", "paste_last", "hold_threshold_ms", "double_tap_ms"),
     "lifecycle": ("keep_warm_seconds",),
     "audio": ("cues", "device", "max_session_seconds"),
 }
@@ -126,7 +126,8 @@ class ListenerApp:
         return HotkeyMachine(Chord.parse(hk.dictate),
                              Chord.parse(hk.cancel) if hk.cancel else None,
                              hold_ms=hk.hold_threshold_ms, double_tap_ms=hk.double_tap_ms,
-                             edit=Chord.parse(hk.edit) if hk.edit else None)
+                             edit=Chord.parse(hk.edit) if hk.edit else None,
+                             paste_last=Chord.parse(hk.paste_last) if hk.paste_last else None)
 
     def _tooltip(self) -> str:
         return f"Keynone - hold {Chord.parse(self.config.hotkeys.dictate)} to dictate"
@@ -275,6 +276,8 @@ class ListenerApp:
             self._cancel_session()
         elif item is Action.HANDSFREE:
             self.engine.send_json(Msg.MODE, {"mode": "handsfree"})
+        elif item is Action.PASTE_LAST:
+            self._paste_last()
         elif isinstance(item, tuple):
             kind, *args = item
             if kind == "auto_stop" and args and args[0] == self._active_sid:
@@ -395,6 +398,9 @@ class ListenerApp:
         if self.config.hotkeys.edit:
             items.append((f"Select text + hold {Chord.parse(self.config.hotkeys.edit)} to edit "
                            "it by voice", None))
+        if self.config.hotkeys.paste_last:
+            items.append((f"{Chord.parse(self.config.hotkeys.paste_last)} pastes the last "
+                          "dictation again", None))
         return [
             *items,
             ("-", None),
@@ -411,19 +417,54 @@ class ListenerApp:
         self._user_paused = not self._user_paused
         self._apply_enabled()
 
-    def _copy_last(self) -> None:
+    def _last_dictation(self) -> str | None:
+        """The text of the last dictation (from history.db), or None after telling why."""
+        if not self.config.history.enabled:
+            self.tray.balloon("Keynone", "The history is off, so there is no last dictation. "
+                                         "Turn it on in Settings > Display & privacy.")
+            return None
         from keynone.engine.history import History  # lazy: keeps idle memory small
 
         history = History(self.paths.history_db, enabled=True, retention_days=0)
         try:
-            recent = history.recent(1)
+            last = history.last()
         finally:
             history.close()
-        if not recent:
+        if last is None or not last.final_text.strip():
             self.tray.balloon("Keynone", "No dictations yet.")
+            return None
+        return last.final_text.strip()
+
+    def _copy_last(self) -> None:
+        text = self._last_dictation()
+        if text is None:
             return
-        clipboard.set_text(recent[0].final_text.rstrip(), private=False)
+        clipboard.set_text(text, private=False)
         self.tray.balloon("Keynone", "Last dictation copied - press Ctrl+V to paste.")
+
+    def _paste_last(self) -> None:
+        """The paste-last hotkey: the last dictation again, into the app in front."""
+        if self._capture is not None:
+            return  # dictating right now
+        text = self._last_dictation()
+        if text is None:
+            self.cues.play("error")
+            return
+        from keynone.engine.inject import Inserter  # lazy: keeps idle memory small
+        from keynone.win32.windows import window_info
+
+        target = window_info()
+        profile = self.config.profile_for(target.exe, target.title)
+        trailing = (profile.trailing_space if profile.trailing_space is not None
+                    else self.config.insert.trailing_space)
+        if trailing and not text.endswith("\n"):
+            text += " "
+        if self.dry_run:
+            log.info("dry run: would paste the last dictation (%d characters)", len(text))
+            return
+        result = Inserter(self.config.insert).insert(text, profile, target)
+        if not result.inserted:
+            self.tray.balloon("Keynone", result.message, warning=True)
 
 
 def stop_running_listener(timeout: float = 5.0) -> bool:

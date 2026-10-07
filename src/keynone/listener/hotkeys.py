@@ -13,6 +13,11 @@ Speak-to-edit chord (default Ctrl+Win+Alt): hold it, say how to change the
 selected text, release. Adding its extra key while already holding the
 dictation chord switches the running session to edit mode, so the order in
 which the keys are pressed doesn't matter.
+
+Paste-last chord (default Alt+Shift+V): pressing it while no dictation runs pastes
+the last dictation again. Its keys are swallowed, so the app doesn't see them. If
+it contains the dictation chord (Ctrl+Win+V), the dictation that its first keys
+started is cancelled silently.
 """
 
 from __future__ import annotations
@@ -32,6 +37,7 @@ class Action(Enum):
     CANCEL = auto()  # discard
     HANDSFREE = auto()  # the running dictation became hands-free
     MASK = auto()  # tap the mask key now (stop Win/Alt from opening menus)
+    PASTE_LAST = auto()  # paste the last dictation again
 
 
 class _State(Enum):
@@ -51,10 +57,12 @@ class HotkeyMachine:
     double_tap_ms: int = 400
     enabled: bool = True
     edit: Chord | None = None
+    paste_last: Chord | None = None
 
     _state: _State = field(default=_State.IDLE, init=False)
     _editing: bool = field(default=False, init=False)
     _pressed: set[int] = field(default_factory=set, init=False)
+    _swallowed: set[int] = field(default_factory=set, init=False)  # paste-last keys held
     _t_down: float = field(default=0.0, init=False)
     _tap_deadline: float = field(default=0.0, init=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
@@ -105,6 +113,11 @@ class HotkeyMachine:
                 return False, []
             return self._on_key(vk, down, now)
 
+    def _paste_pressed(self, vk: int, down: bool, repeat: bool, before: set[int]) -> bool:
+        return (self.paste_last is not None and down and not repeat
+                and self.paste_last.satisfied_by(self._pressed)
+                and not self.paste_last.satisfied_by(before))
+
     def _on_key(self, vk: int, down: bool, now: float) -> tuple[bool, list[Action]]:
         repeat = down and vk in self._pressed
         before = set(self._pressed)
@@ -112,6 +125,25 @@ class HotkeyMachine:
             self._pressed.add(vk)
         else:
             self._pressed.discard(vk)
+        if vk in self._swallowed:  # the rest of a paste-last press: its repeats, its release
+            if not down:
+                self._swallowed.discard(vk)
+            return True, []
+        holding = self._state is _State.HOLDING
+        if self._paste_pressed(vk, down, repeat, before) and (
+                self._state in (_State.IDLE, _State.IGNORE)
+                # Ctrl+Win+V right after Ctrl+Win: never once a dictation is under way
+                or (holding and not self._involves(vk)
+                    and (now - self._t_down) * 1000 < self.hold_ms)):
+            assert self.paste_last is not None
+            pasted = [Action.PASTE_LAST, *self._mask(self.paste_last)]
+            if holding:  # Ctrl+Win (dictation) + V: not a dictation after all
+                pasted.insert(0, Action.CANCEL)
+                self._editing = False
+            self._state = _State.IGNORE if self._chord_keys_down() else _State.IDLE
+            if vk not in MODIFIER_VKS:
+                self._swallowed.add(vk)
+            return vk not in MODIFIER_VKS, pasted
         dict_before, dict_after = (self.chord.satisfied_by(before),
                                    self.chord.satisfied_by(self._pressed))
         edit_before = self.edit is not None and self.edit.satisfied_by(before)

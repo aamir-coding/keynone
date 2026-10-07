@@ -28,7 +28,7 @@ release the key, **0 % CPU** while idle.
 | App-aware | Chat apps (no trailing period), e-mail, and a prompt style for AI assistants in terminals, code editors and AI apps (Claude Code, Cursor, ChatGPT…): sentences as prose, commands as you said them ("git status"), "camel case user name" → userName, "at main dot py" → @main.py |
 | Personal dictionary | Your spellings for names and jargon |
 | Snippets | Say "my address" (or "insert my address" mid-sentence) and your saved text goes in exactly as written: addresses, signatures, meeting links |
-| History | Local SQLite; "Copy last dictation" in the tray |
+| History | Local SQLite: search, copy or delete past dictations in the settings window; **Alt+Shift+V** pastes the last one again (when it went into the wrong window) |
 | Private & contained | Offline after setup; every file lives inside this folder |
 | **Speak-to-edit** | Select text anywhere, hold **Ctrl+Win+Alt**, say "make it shorter" / "more formal" / "translate to Spanish" — the selection is rewritten |
 | **Smart spacing** | Reads the text around the cursor: lowercase mid-sentence, one space between words, no doubled punctuation, lists start on a new line; detects password fields in browsers too |
@@ -74,6 +74,7 @@ Then double-click **`Keynone.cmd`**. A microphone icon appears in the tray.
 
 * **Hold Ctrl+Win** and speak → release to insert.
 * **Double-tap Ctrl+Win** → hands-free; tap again to finish.
+* **Alt+Shift+V** → paste the last dictation again.
 * **Select text, hold Ctrl+Win+Alt** and say how to change it → release; the
   selection is replaced (Ctrl+Z undoes it in most apps).
 * **Esc** → cancel.

@@ -1,7 +1,15 @@
 import pytest
 
 from keynone.listener.hotkeys import Action, HotkeyMachine
-from keynone.win32.keys import VK_CAPITAL, VK_ESCAPE, VK_LCONTROL, VK_LWIN, Chord, ChordError
+from keynone.win32.keys import (
+    VK_CAPITAL,
+    VK_ESCAPE,
+    VK_LCONTROL,
+    VK_LSHIFT,
+    VK_LWIN,
+    Chord,
+    ChordError,
+)
 
 D = 0x44  # 'D'
 A = 0x41  # 'A'
@@ -158,3 +166,53 @@ def test_dictation_still_works_with_edit_chord_configured() -> None:
     assert press(m, 0.0, VK_LCONTROL, VK_LWIN) == [Action.START, Action.MASK]
     assert release(m, 1.5, VK_LCONTROL, VK_LWIN) == [Action.STOP]
     assert not m.editing
+
+
+# --------------------------------------------------------------------------- paste last
+
+V = 0x56  # 'V'
+
+
+def paste_machine(paste: str = "alt+shift+v", chord: str = "ctrl+win") -> HotkeyMachine:
+    return HotkeyMachine(Chord.parse(chord), Chord.parse("esc"), paste_last=Chord.parse(paste))
+
+
+def test_paste_last_chord_fires_once_and_its_key_is_swallowed() -> None:
+    m = paste_machine()
+    press(m, 0.0, VK_LMENU, VK_LSHIFT)
+    swallow, actions = m.on_key(V, True, 0.1)
+    assert actions == [Action.PASTE_LAST, Action.MASK] and swallow is True
+    assert m.on_key(V, True, 0.2) == (True, [])  # auto-repeat: nothing more, still swallowed
+    assert m.on_key(V, False, 0.3) == (True, [])  # its release doesn't reach the app either
+    assert release(m, 0.4, VK_LSHIFT, VK_LMENU) == []
+    assert m.state_name == "IDLE"
+    # the modifiers alone, or with another key, are left alone
+    assert m.on_key(A, True, 1.0)[0] is False
+
+
+def test_paste_last_after_the_dictation_chord_cancels_the_dictation() -> None:
+    m = paste_machine("ctrl+win+v")
+    assert press(m, 0.0, VK_LCONTROL, VK_LWIN)[0] is Action.START
+    swallow, actions = m.on_key(V, True, 0.1)
+    assert actions[:2] == [Action.CANCEL, Action.PASTE_LAST] and swallow is True
+    assert release(m, 0.2, V, VK_LWIN, VK_LCONTROL) == []
+    assert m.state_name == "IDLE"
+
+
+def test_paste_last_never_interrupts_a_dictation_under_way() -> None:
+    m = paste_machine("ctrl+win+v")
+    press(m, 0.0, VK_LCONTROL, VK_LWIN)  # dictating for a while ...
+    swallow, actions = m.on_key(V, True, 2.0)
+    assert Action.PASTE_LAST not in actions and Action.CANCEL not in actions
+    assert swallow is False
+    assert release(m, 2.5, V, VK_LWIN, VK_LCONTROL) == [Action.STOP]
+
+
+def test_paste_last_off_when_disabled_or_unset() -> None:
+    m = paste_machine()
+    m.enabled = False
+    press(m, 0.0, VK_LMENU, VK_LSHIFT)
+    assert m.on_key(V, True, 0.1) == (False, [])
+    plain = machine()
+    press(plain, 0.0, VK_LMENU, VK_LSHIFT)
+    assert plain.on_key(V, True, 0.1) == (False, [])
