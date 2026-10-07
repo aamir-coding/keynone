@@ -134,6 +134,8 @@ class PrivacyConfig:
 class DictionaryConfig:
     words: list[str] = field(default_factory=list)
     replacements: dict[str, str] = field(default_factory=dict)
+    # Keep the spelling when the user fixes a name right after dictating it.
+    learn: bool = True
 
 
 @dataclass

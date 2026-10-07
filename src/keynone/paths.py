@@ -62,6 +62,11 @@ class Paths:
         return self.data / "history.db"
 
     @property
+    def learned_db(self) -> Path:
+        """Spellings learned from the user's corrections (keynone.learning)."""
+        return self.data / "learned.db"
+
+    @property
     def default_config(self) -> Path:
         """Commented default config shipped inside the package."""
         return Path(__file__).with_name("default_config.toml")

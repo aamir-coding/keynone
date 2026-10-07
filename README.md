@@ -26,7 +26,7 @@ release the key, **0 % CPU** while idle.
 | Spoken punctuation | "comma", "period", "question mark", "colon", "open bracket"…, and addresses: "jane dot doe at example dot com" → jane.doe@example.com, "main dot py" → main.py. The words stay words where they belong ("the Oxford comma", "a period of time"); "literal comma" types the word |
 | Quiet microphones | Speech too quiet for the recognizer is lifted automatically (normal levels are left alone) |
 | App-aware | Chat apps (no trailing period), e-mail, and a prompt style for AI assistants in terminals, code editors and AI apps (Claude Code, Cursor, ChatGPT…): sentences as prose, commands as you said them ("git status"), "camel case user name" → userName, "at main dot py" → @main.py |
-| Personal dictionary | Your spellings for names and jargon |
+| Personal dictionary | Your spellings for names and jargon. **Learns from your corrections:** fix a name right after dictating it ("Amid" → "Aamir") and Keynone writes it your way from then on |
 | Snippets | Say "my address" (or "insert my address" mid-sentence) and your saved text goes in exactly as written: addresses, signatures, meeting links |
 | History | Local SQLite: search, copy or delete past dictations in the settings window; **Alt+Shift+V** pastes the last one again (when it went into the wrong window) |
 | Private & contained | Offline after setup; every file lives inside this folder |

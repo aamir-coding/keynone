@@ -54,6 +54,10 @@ class UiaClient:
         self._uia: Any = None
         self._automation: Any = None
         self.available = True
+        # Text boxes being watched for corrections (keynone.learning), by handle. Only
+        # touched on the UIA thread: COM objects stay with the thread that made them.
+        self._watched: dict[int, Any] = {}
+        self._next_handle = 0
 
     # ----------------------------------------------------------------- worker
 
@@ -185,3 +189,35 @@ class UiaClient:
         """The focused element's selected text ("" = none, None = unknown)."""
         context = self.caret_context(timeout=timeout, max_selection=max_chars)
         return None if context is None else context.selection
+
+    # ----------------------------------------------------------------- watching a text box
+
+    def _watch(self) -> int | None:
+        element = self._focused()
+        if element is None or element.CurrentIsPassword:
+            return None
+        patterns = self._text_pattern(element)
+        if patterns is None:
+            return None
+        self._next_handle += 1
+        self._watched[self._next_handle] = patterns[0]
+        return self._next_handle
+
+    def _watched_text(self, handle: int, max_chars: int) -> str | None:
+        pattern = self._watched.get(handle)
+        if pattern is None:
+            return None
+        return _clean(pattern.DocumentRange.GetText(max_chars))
+
+    def watch_focused(self, *, timeout: float = 0.5) -> int | None:
+        """Remember the focused text box (not a password field) to read it again later;
+        a handle for :meth:`watched_text`, or None if it has no text support."""
+        return self._call(self._watch, timeout)
+
+    def watched_text(self, handle: int, *, timeout: float = 0.5,
+                     max_chars: int = 100_000) -> str | None:
+        """The whole text of a watched text box now (None if it is gone)."""
+        return self._call(lambda: self._watched_text(handle, max_chars), timeout)
+
+    def unwatch(self, handle: int) -> None:
+        self._call(lambda: self._watched.pop(handle, None), 0.5)
