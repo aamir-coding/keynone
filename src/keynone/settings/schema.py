@@ -14,7 +14,7 @@ from typing import Literal
 
 Kind = Literal[
     "bool", "int", "float", "text", "choice", "hotkey", "device", "words", "replacements",
-    "apps", "language", "translate", "gpu", "percent",
+    "snippets", "apps", "language", "translate", "gpu", "percent",
 ]
 
 
@@ -201,6 +201,15 @@ SECTIONS: tuple[Section, ...] = (
                   "When the recognizer hears the left side, write the right side.",
                   "replacements"),
         ),
+    ),
+    Section(
+        "snippets", "Snippets",
+        "Text you insert by voice: an address, a signature, a meeting link. It goes in "
+        "exactly as written here.",
+        (Field("snippets", "Your snippets",
+               "Say the phrase on its own to insert the text, or say \"insert\" and the "
+               "phrase while dictating (\"you can reach me at insert my email\").",
+               "snippets"),),
     ),
     Section(
         "apps", "App profiles",

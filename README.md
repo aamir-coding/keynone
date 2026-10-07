@@ -27,6 +27,7 @@ release the key, **0 % CPU** while idle.
 | Quiet microphones | Speech too quiet for the recognizer is lifted automatically (normal levels are left alone) |
 | App-aware | Chat apps (no trailing period), e-mail, and a prompt style for AI assistants in terminals, code editors and AI apps (Claude Code, Cursor, ChatGPT…): sentences as prose, commands as you said them ("git status"), "camel case user name" → userName, "at main dot py" → @main.py |
 | Personal dictionary | Your spellings for names and jargon |
+| Snippets | Say "my address" (or "insert my address" mid-sentence) and your saved text goes in exactly as written: addresses, signatures, meeting links |
 | History | Local SQLite; "Copy last dictation" in the tray |
 | Private & contained | Offline after setup; every file lives inside this folder |
 | **Speak-to-edit** | Select text anywhere, hold **Ctrl+Win+Alt**, say "make it shorter" / "more formal" / "translate to Spanish" — the selection is rewritten |

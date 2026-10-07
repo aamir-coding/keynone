@@ -122,6 +122,14 @@ words = []
 # "chat gpt" = "ChatGPT"
 # "post gres" = "Postgres"
 
+[snippets]
+# Text you insert by voice. Say the phrase on its own ("my address"), or say
+# "insert" and the phrase while dictating ("you can reach me at insert my email").
+# The text goes in exactly as written here.
+# "my email" = "jane@example.com"
+# "my address" = """221B Baker Street
+# London NW1 6XE"""
+
 # Per-app behaviour. The first profile whose `match` (process name) or
 # `title_match` (window-title substring) matches the active window wins.
 # Built-in profiles for chat apps, e-mail, terminals, code editors and AI apps apply

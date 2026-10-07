@@ -396,7 +396,7 @@ def _edit_distance(a: str, b: str) -> int:
     return previous[-1]
 
 
-def _words_match(spoken: str, phrase: str) -> bool:
+def words_match(spoken: str, phrase: str) -> bool:
     """Same words, allowing one recognition slip in words of 4+ letters."""
     a, b = spoken.split(), phrase.split()
     if len(a) != len(b):
@@ -428,10 +428,10 @@ def command_for(sentence: str) -> str | None:
         return SCRATCH
     stripped = _COMMAND_LEAD_RE.sub("", key)
     if stripped != key and (stripped in _SCRATCH_CMDS or stripped in _SCRATCH_EXACT_ONLY
-                            or any(_words_match(stripped, p) for p in _SCRATCH_CMDS)):
+                            or any(words_match(stripped, p) for p in _SCRATCH_CMDS)):
         return SCRATCH
     for phrases, command in _COMMANDS:
-        if any(_words_match(key, phrase) for phrase in phrases):
+        if any(words_match(key, phrase) for phrase in phrases):
             return command
     return None
 
@@ -478,6 +478,11 @@ def _last_sentence(line: str) -> str:
     return parts[-1] if parts else line
 
 
+# What a sentence can end with: its punctuation, or a snippet (cleanup/snippets.py),
+# whose saved text brings its own.
+_ENDINGS = frozenset(".!?…") | frozenset(chr(c) for c in range(0xE000, 0xE100))
+
+
 def close_before_break(text: str) -> str:
     """End the text that precedes a spoken line/paragraph break.
 
@@ -486,7 +491,7 @@ def close_before_break(text: str) -> str:
     sign-offs ("Milk", "Best regards").
     """
     body = text.rstrip(" ,;:")
-    if not body.strip() or body.endswith("\n") or body[-1] in ".!?…":
+    if not body.strip() or body.endswith("\n") or body[-1] in _ENDINGS:
         return body
     sentence = _last_sentence(body.rsplit("\n", 1)[-1].strip())
     words = len(sentence.split())
@@ -500,7 +505,7 @@ def close_before_break(text: str) -> str:
 def close_sentence(text: str) -> str:
     """End an unpunctuated sentence with "." (or "?" for a question)."""
     body = text.rstrip(" ,;:")
-    if not body or body[-1] in ".!?…":
+    if not body or body[-1] in _ENDINGS:
         return body
     return body + ("?" if is_question(_last_sentence(body)) else ".")
 
