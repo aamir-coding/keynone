@@ -204,6 +204,10 @@ SECTIONS: tuple[Section, ...] = (
             Field("dictionary.replacements", "Replacements",
                   "When the recognizer hears the left side, write the right side.",
                   "replacements"),
+            Field("dictionary.learn", "Learn from my corrections",
+                  "When you fix a name Keynone typed within a minute of dictating it, your "
+                  "spelling is used from then on. Keynone reads that text box only during "
+                  "that minute and keeps only the two spellings.", "bool"),
         ),
     ),
     Section(

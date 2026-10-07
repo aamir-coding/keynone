@@ -21,6 +21,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from keynone import learning
 from keynone.cleanup import formatting, guard, rules, snippets, spoken
 from keynone.cleanup.language import base_language, detect_language, language_code, language_name
 from keynone.cleanup.prompts import PromptVariant
@@ -73,6 +74,8 @@ class CleanupSettings:
     style: Style = "default"
     # (phrase, text): "insert <phrase>" while dictating puts the text there.
     snippets: tuple[tuple[str, str], ...] = ()
+    # Spellings learned from the user's corrections (keynone.learning).
+    learned: tuple[learning.Learned, ...] = ()
 
 
 @dataclass
@@ -159,6 +162,7 @@ class CleanupPipeline:
         """Deterministic cleanup of one unit (instant)."""
         options = dataclasses.replace(self.settings.rules, language=language)
         text = rules.clean_sentence(raw, options)
+        text = learning.apply_learned(text, self.settings.learned)
         text, _ = rules.resolve_scratches(text)
         return rules.resolve_corrections(text) if language == "en" else text
 
@@ -504,7 +508,8 @@ class CleanupPipeline:
         polished = rules.apply_dictionary(
             polished, self.settings.rules.words, dict(self.settings.rules.replacements)
         )
-        lost = "" if translating else spoken.missing_mark(marks or Counter(), cleaned, polished)
+        polished = learning.apply_learned(polished, self.settings.learned)
+        lost ="" if translating else spoken.missing_mark(marks or Counter(), cleaned, polished)
         if lost:
             log.info("LLM output rejected: spoken %r lost", lost)
             self._result.rejections.append(f"spoken mark {lost!r} lost")

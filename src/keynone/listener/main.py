@@ -74,6 +74,17 @@ def launch_settings_window(paths: Paths) -> None:
                      creationflags=subprocess.CREATE_NO_WINDOW)
 
 
+def learned_message(items: list[dict[str, Any]]) -> str:
+    """ "Aamir" from now on (it heard "Amid") - for the tray."""
+    pairs = [(str(i.get("written", "")), str(i.get("heard", ""))) for i in items][:3]
+    if len(pairs) == 1:
+        written, heard = pairs[0]
+        text = f"“{written}” from now on (it heard “{heard}”)."
+    else:
+        text = "From now on: " + ", ".join(f"“{w}”" for w, _ in pairs) + "."
+    return text + " Settings > Dictionary lists what it learned."
+
+
 def missing_assets(config: Config, paths: Paths) -> list[str]:
     needed = [config.asr.model]
     if config.cleanup.llm_mode != "off":
@@ -289,6 +300,8 @@ class ListenerApp:
                 self._engine_exited(args[0])
             elif kind == "balloon":
                 self.tray.balloon(args[0], args[1], warning=True)
+            elif kind == "learned":
+                self.tray.balloon("Keynone learned a spelling", learned_message(args[0]))
             # "wake": only interrupts the wait, so housekeeping runs now
 
     def _start_session(self, mode: str = "ptt") -> None:
@@ -384,6 +397,9 @@ class ListenerApp:
             self._work.put(("engine_exited", event.get("code")))
         elif name == "warning":
             self._work.put(("balloon", "Keynone", str(event.get("message", ""))))
+        elif name == "learned":
+            self._work.put(("learned", event.get("items") or []))
+            return  # the words are the user's: not for the log
         log.debug("engine event: %s", event)
 
     # ----------------------------------------------------------------- tray menu (main thread)

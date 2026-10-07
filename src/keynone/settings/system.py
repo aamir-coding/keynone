@@ -13,6 +13,7 @@ from pathlib import Path
 from keynone import autostart
 from keynone.assets import get_asset
 from keynone.editions import Edition, installed_edition, language_pack_installed
+from keynone.learning import Learned, LearnedStore
 from keynone.listener import control
 from keynone.paths import Paths
 
@@ -101,6 +102,37 @@ class System:
 
     def open(self, path: Path) -> None:
         os.startfile(path)  # a local file or folder, in its default app
+
+    # ----------------------------------------------------------------- learned spellings
+
+    def learned(self) -> list[Learned]:
+        """Spellings learned from corrections (data/learned.db), newest first."""
+        store = LearnedStore(self.paths.learned_db)
+        try:
+            return store.entries()
+        finally:
+            store.close()
+
+    def forget(self, heard: str | None = None) -> None:
+        """Remove one learned spelling (by what was heard), or all of them."""
+        store = LearnedStore(self.paths.learned_db)
+        try:
+            if heard is None:
+                store.clear()
+            else:
+                store.remove(heard)
+        finally:
+            store.close()
+
+    def learned_changed_at(self) -> float:
+        """Changes when the engine learns something (also while it's only in the WAL)."""
+        stamps = []
+        for path in (self.paths.learned_db, self.paths.learned_db.with_name("learned.db-wal")):
+            try:
+                stamps.append(path.stat().st_mtime_ns)
+            except OSError:
+                stamps.append(0)
+        return float(max(stamps))
 
     def copy_text(self, text: str) -> None:
         """Put ``text`` on the clipboard (it stays there after the window closes)."""

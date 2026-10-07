@@ -215,3 +215,27 @@ def test_speak_to_edit_rewrites_the_selection(uia: UiaClient) -> None:
         box.close()
         polisher.close()
         job.close()
+
+
+@pytest.mark.parametrize("control", CONTROLS)
+def test_a_corrected_name_is_learned(uia: UiaClient, control: str, tmp_path: object) -> None:
+    from pathlib import Path
+
+    from keynone.engine.learn_watch import CorrectionWatcher
+    from keynone.learning import Learned, LearnedStore
+
+    box = _open("Notes: ", control)
+    try:
+        box.select(7, 7)
+        _fit_and_insert(box, uia, "Please ask Amid to review the draft.")
+        store = LearnedStore(Path(str(tmp_path)) / "learned.db")
+        learned = threading.Event()
+        watcher = CorrectionWatcher(uia, store, lambda items: learned.set())
+        watcher.watch(box.text()[7:], checks=(0.3, 0.8, 1.3, 1.8))
+        time.sleep(0.5)
+        box.set_text(box.text().replace("Amid", "Aamir"))  # the user fixes the name
+        assert learned.wait(5), "the correction was not learned"
+        assert store.entries() == [Learned("Amid", "Aamir")]
+        store.close()
+    finally:
+        box.close()

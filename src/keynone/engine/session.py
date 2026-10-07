@@ -6,7 +6,7 @@ import logging
 import queue
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -23,6 +23,7 @@ from keynone.engine.history import History
 from keynone.engine.inject import Inserter
 from keynone.engine.models import EngineModels
 from keynone.engine.overlay import Overlay
+from keynone.learning import Learned
 from keynone.win32.keys import Chord
 from keynone.win32.uia import UiaClient
 from keynone.win32.windows import WindowInfo, window_info
@@ -102,6 +103,8 @@ class Session:
         on_finished: Callable[[SessionOutcome], None],
         on_event: Callable[..., None] | None = None,
         uia: UiaClient | None = None,
+        learned: Sequence[Learned] = (),
+        on_inserted: Callable[[str, AppProfile], None] | None = None,
     ) -> None:
         self.meta = meta
         self.config = config
@@ -110,8 +113,10 @@ class Session:
         self.inserter = inserter
         self.history = history
         self.uia = uia
+        self.learned = tuple(learned)
         self._on_finished = on_finished
         self._on_event = on_event or (lambda *a, **k: None)
+        self._on_inserted = on_inserted  # e.g. watch the text box for corrections
         self._queue: queue.Queue[bytes | str] = queue.Queue()
         self._mode = meta.mode
         self._stopped_at: float | None = None
@@ -223,6 +228,7 @@ class Session:
             spoken_punctuation=cfg.cleanup.spoken_punctuation,
             style=self.profile.style,
             snippets=tuple(cfg.snippets.items()),
+            learned=self.learned,
         )
 
     def _process(self) -> SessionOutcome:
@@ -344,8 +350,14 @@ class Session:
             self.overlay.hide(700)
             return SessionOutcome(status="empty", latency_ms=self._latency(), **base)
         inserted = self.inserter.insert(text, profile, target)
-        return self._finish_insert(inserted, text, raw, seconds, llm_calls, target, base,
-                                   success="Inserted")
+        outcome = self._finish_insert(inserted, text, raw, seconds, llm_calls, target, base,
+                                      success="Inserted")
+        if inserted.inserted and self._on_inserted is not None:
+            try:
+                self._on_inserted(text, profile)
+            except Exception:  # e.g. watching for corrections: never worth failing for
+                log.warning("after-insert hook failed", exc_info=True)
+        return outcome
 
     def _finish_insert(self, inserted: Any, text: str, raw: str, seconds: float, llm_calls: int,
                        target: WindowInfo, base: dict[str, Any], *, success: str
