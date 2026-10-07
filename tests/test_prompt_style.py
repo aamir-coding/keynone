@@ -7,7 +7,8 @@ import pytest
 from keynone.cleanup import formatting
 from keynone.cleanup.pipeline import CleanupPipeline, CleanupSettings
 from keynone.cleanup.spoken import convert
-from keynone.config import Config, Style
+from keynone.config import AppProfile, Config, Style
+from keynone.engine.session import compose
 
 
 def dictate(*fragments: str, style: Style = "prompt") -> str:
@@ -15,12 +16,8 @@ def dictate(*fragments: str, style: Style = "prompt") -> str:
     pipeline = CleanupPipeline(CleanupSettings(llm_mode="off", style=style))
     for fragment in fragments:
         pipeline.add_sentence(fragment)
-    cleaned = pipeline.finish(timeout=2).text
-    written = formatting.effective_style(style, cleaned)
-    if written == "code" and formatting.looks_like_command(cleaned):
-        cleaned = formatting.as_command(cleaned)
-    return formatting.finalize(cleaned, style=written, drop_final_period=False,
-                               trailing_space=False)
+    text, _ = compose(pipeline.finish(timeout=2).text, AppProfile(style=style), Config())
+    return text
 
 
 @pytest.mark.parametrize(("said", "written"), [

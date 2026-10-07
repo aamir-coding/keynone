@@ -33,7 +33,8 @@ def normalize_lists(text: str) -> str:
     return "\n".join(out)
 
 
-_SENTENCE_END_RE = re.compile(r"[.!?…:;,。！？；：，।؟][\"'”’)\]」』]*$")
+# Punctuation that ends a sentence, or a snippet at the end (cleanup/snippets.py).
+_SENTENCE_END_RE = re.compile(r"[.!?…:;,。！？；：，।؟-][\"'”’)\]」』]*$")
 _CJK_RE = re.compile(r"[぀-ヿ一-鿿]")  # kana + Han (no spaces between)
 _FULL_STOP = {"zh": "。", "ja": "。", "hi": "।"}
 

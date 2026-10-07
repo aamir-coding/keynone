@@ -220,6 +220,8 @@ class Config:
     history: HistoryConfig = field(default_factory=HistoryConfig)
     privacy: PrivacyConfig = field(default_factory=PrivacyConfig)
     dictionary: DictionaryConfig = field(default_factory=DictionaryConfig)
+    # Saved text inserted by voice: {"my address": "221B Baker Street ..."}.
+    snippets: dict[str, str] = field(default_factory=dict)
     apps: list[AppProfile] = field(default_factory=list)
 
     def profile_for(self, exe: str, title: str) -> AppProfile:
@@ -314,6 +316,10 @@ def _validate(cfg: Config) -> None:
     check(cfg.llm.gpu_layers >= 0, "llm.gpu_layers must be >= 0")
     check(cfg.edit.timeout_seconds > 0, "edit.timeout_seconds must be > 0")
     check(cfg.edit.max_selection_chars >= 100, "edit.max_selection_chars must be >= 100")
+    for phrase, text in cfg.snippets.items():
+        check(bool(re.search(r"[^\W_]", phrase)), f"snippets: {phrase!r} has no words to say")
+        check(bool(text.strip()), f"snippets.{phrase!r}: the text is empty")
+    check(len(cfg.snippets) <= 256, "snippets: at most 256")
 
 
 def parse_config(text: str) -> Config:

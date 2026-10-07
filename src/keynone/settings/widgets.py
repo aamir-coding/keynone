@@ -7,6 +7,7 @@ with a short explanation, and Save stays disabled until it is fixed.
 
 from __future__ import annotations
 
+import re
 import tkinter as tk
 from collections.abc import Callable, Sequence
 from tkinter import ttk
@@ -543,6 +544,142 @@ class ReplacementsControl(Control):
         self.host.problem(self.key, None)
 
 
+# --------------------------------------------------------------------------- snippets
+
+_SNIPPET_LEADS = ("insert", "paste", "type")
+
+
+class _SnippetCard:
+    """One snippet: the phrase to say and the text it inserts (several lines allowed)."""
+
+    def __init__(self, owner: SnippetsControl, phrase: str, text: str) -> None:
+        theme = owner.host.theme
+        p, px = theme.palette, theme.px
+        self.owner = owner
+        self.border = tk.Frame(owner.list_frame, background=p.border)
+        body = ttk.Frame(self.border, padding=(px(12), px(10)))
+        body.pack(fill="both", expand=True, padx=1, pady=1)
+        body.columnconfigure(1, weight=1)
+        self.phrase = tk.StringVar(master=body, value=phrase)
+        ttk.Label(body, text="Say").grid(row=0, column=0, sticky="w", padx=(0, px(12)))
+        self.entry = ttk.Entry(body, textvariable=self.phrase, width=28)
+        self.entry.grid(row=0, column=1, sticky="w")
+        ttk.Button(body, text="Remove", style="Link.TButton",
+                   command=lambda: owner.remove(self)).grid(row=0, column=2, sticky="e")
+        ttk.Label(body, text="Insert").grid(row=1, column=0, sticky="nw", padx=(0, px(12)),
+                                            pady=(px(8), 0))
+        box = _Box(body, theme)
+        box.grid(row=1, column=1, columnspan=2, sticky="we", pady=(px(8), 0))
+        self.text = tk.Text(box, height=3, width=40, wrap="word", undo=True, relief="flat",
+                            borderwidth=0, background=p.surface, foreground=p.text,
+                            insertbackground=p.text, selectbackground=p.accent,
+                            selectforeground=p.on_accent, font=theme.fonts.body,
+                            padx=px(8), pady=px(6), highlightthickness=0)
+        self.text.pack(fill="both", expand=True)
+        self.text.insert("1.0", text)
+        self.text.edit_modified(False)
+        self.text.edit_reset()
+        self.text.bind("<<Modified>>", self._modified)
+        self.text.bind("<FocusIn>", lambda _e: box.configure(background=p.accent))
+        self.text.bind("<FocusOut>", lambda _e: box.configure(background=p.border_strong))
+        self.phrase.trace_add("write", lambda *_: owner.changed())
+
+    def _modified(self, _event: object = None) -> None:
+        if self.text.edit_modified():
+            self.text.edit_modified(False)
+            self.owner.changed()
+
+    def value(self) -> tuple[str, str]:
+        return self.phrase.get().strip(), self.text.get("1.0", "end-1c")
+
+
+def _spoken(phrase: str) -> str:
+    """A phrase as it is matched: lowercase words only."""
+    return " ".join(re.findall(r"[^\W_]+(?:['’][^\W_]+)*", phrase.lower()))
+
+
+class SnippetsControl(Control):
+    """Saved text and the phrase that inserts it."""
+
+    wide = True
+
+    def __init__(self, host: Host, field: Field, parent: tk.Misc) -> None:
+        super().__init__(host, field)
+        px = host.theme.px
+        self.widget = frame = ttk.Frame(parent)
+        frame.columnconfigure(0, weight=1)
+        self.list_frame = ttk.Frame(frame)
+        self.list_frame.grid(row=0, column=0, sticky="we")
+        self.list_frame.columnconfigure(0, weight=1)
+        self.empty = ttk.Label(self.list_frame, style="Muted.TLabel", text="No snippets yet.")
+        ttk.Button(frame, text="Add a snippet", command=self._add).grid(
+            row=1, column=0, sticky="w", pady=(px(10), 0))
+        self.cards: list[_SnippetCard] = []
+        self._loading = False
+        self.refresh()
+
+    def _layout(self) -> None:
+        px = self.host.theme.px
+        self.empty.grid_forget()
+        for row, card in enumerate(self.cards):
+            card.border.grid(row=row, column=0, sticky="we", pady=(0 if row == 0 else px(8), 0))
+        if not self.cards:
+            self.empty.grid(row=0, column=0, sticky="w")
+
+    def _add(self) -> None:
+        card = _SnippetCard(self, "", "")
+        self.cards.append(card)
+        self._layout()
+        card.entry.focus_set()
+        self.changed()
+
+    def remove(self, card: _SnippetCard) -> None:
+        card.border.destroy()
+        self.cards.remove(card)
+        self._layout()
+        self.changed()
+
+    def snippets(self) -> tuple[dict[str, str], str | None]:
+        result: dict[str, str] = {}
+        seen: set[str] = set()
+        problem = None
+        for card in self.cards:
+            phrase, text = card.value()
+            if not phrase and not text.strip():
+                continue
+            spoken = _spoken(phrase)
+            if not spoken:
+                problem = problem or "Every snippet needs a phrase to say."
+            elif spoken.split()[0] in _SNIPPET_LEADS:
+                problem = problem or (f"Leave “{phrase.split()[0]}” out of the phrase: you say "
+                                      "it in front of the phrase anyway.")
+            elif not text.strip():
+                problem = problem or f"“{phrase}” has no text to insert."
+            elif spoken in seen:
+                problem = problem or f"“{phrase}” is listed twice."
+            else:
+                seen.add(spoken)
+                result[phrase] = text
+        return result, problem
+
+    def changed(self) -> None:
+        if self._loading:
+            return
+        values, problem = self.snippets()
+        self.host.problem(self.key, problem)
+        if problem is None:
+            self.host.edited(self.key, values)
+
+    def refresh(self) -> None:
+        self._loading = True
+        for card in self.cards:
+            card.border.destroy()
+        self.cards = [_SnippetCard(self, phrase, text) for phrase, text in self.value.items()]
+        self._layout()
+        self._loading = False
+        self.host.problem(self.key, None)
+
+
 # --------------------------------------------------------------------------- app profiles
 
 _STYLES = (Option("default", "Default"), Option("chat", "Chat"), Option("email", "Email"),
@@ -725,5 +862,6 @@ BUILDERS: dict[str, Builder] = {
     "hotkey": HotkeyControl,
     "words": WordsControl,
     "replacements": ReplacementsControl,
+    "snippets": SnippetsControl,
     "apps": AppsControl,
 }

@@ -21,7 +21,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from keynone.cleanup import formatting, guard, rules, spoken
+from keynone.cleanup import formatting, guard, rules, snippets, spoken
 from keynone.cleanup.language import base_language, detect_language, language_code, language_name
 from keynone.cleanup.prompts import PromptVariant
 from keynone.config import LlmMode, Style
@@ -71,6 +71,8 @@ class CleanupSettings:
     spoken_punctuation: bool = True
     # The app's style: in "code" and "prompt" a spoken "dash" is a hyphen.
     style: Style = "default"
+    # (phrase, text): "insert <phrase>" while dictating puts the text there.
+    snippets: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass
@@ -83,6 +85,8 @@ class CleanupResult:
     timed_out_units: int = 0
     # The text ends with a spoken mark ("... see you soon period"): chat apps keep it.
     spoken_end: bool = False
+    # Snippet placeholders in ``text`` and their saved text (snippets.fill).
+    snippets: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -127,6 +131,7 @@ class CleanupPipeline:
         # Spoken marks the dictation started with ("comma, and then ..."): they go
         # before the text, which can't be cleaned with them in front.
         self._prefix = ""
+        self._snippets: dict[str, str] = {}  # placeholder -> saved text
         self._worker = threading.Thread(target=self._run, name="cleanup", daemon=True)
         self._worker.start()
 
@@ -202,6 +207,10 @@ class CleanupPipeline:
             if converted.lead:
                 raw = self._attach_lead_locked(converted.lead, raw)
                 marks = marks - Counter(converted.lead)
+            if self.settings.snippets:
+                raw, found = snippets.mark_inline(raw, self.settings.snippets,
+                                                  len(self._snippets))
+                self._snippets.update(found)
             # The recognizer often emits a sentence's final punctuation only after
             # the pause that flushed the sentence: give it back to that sentence.
             leading = _LEADING_PUNCT_RE.match(raw)
@@ -500,6 +509,9 @@ class CleanupPipeline:
             log.info("LLM output rejected: spoken %r lost", lost)
             self._result.rejections.append(f"spoken mark {lost!r} lost")
             return fallback
+        if any(snippets.is_placeholder(c) and c not in polished for c in cleaned):
+            self._result.rejections.append("snippet lost")
+            return fallback
         return self._finalize(polished, output_language, marks)
 
     def _notify(self) -> None:
@@ -517,11 +529,13 @@ class CleanupPipeline:
             snapshot = [(u.raw, u.polished, u.done_version == u.version, u.is_break)
                         for u in self._units]
             prefix = self._prefix
+            placeholders = dict(self._snippets)
         parts = [polished if done else
                  (raw if is_break else self._rules_clean(raw, self._unit_language(raw)))
                  for raw, polished, done, is_break in snapshot]
         text = formatting.join_units(parts)
-        return spoken.after_mark(prefix, text) if prefix else text
+        text = spoken.after_mark(prefix, text) if prefix else text
+        return snippets.fill(text, placeholders)
 
     def finish(self, timeout: float) -> CleanupResult:
         """Wait (at most ``timeout`` s) for pending units and return the text."""
@@ -543,6 +557,7 @@ class CleanupPipeline:
             self._result.spoken_end = (last.ends_spoken if last is not None and not last.is_break
                                        else bool(self._prefix) and not self._units)
             prefix = self._prefix
+            self._result.snippets = dict(self._snippets)
         parts = []
         for (raw, polished, done, is_break), marks in zip(snapshot, unit_marks, strict=True):
             if done or is_break:

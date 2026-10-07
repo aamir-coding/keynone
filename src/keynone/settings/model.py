@@ -30,6 +30,7 @@ from keynone.config import AppProfile, Config, ConfigError, parse_config
 from keynone.win32.keys import Chord, ChordError
 
 APPS_KEY = "apps"
+SNIPPETS_KEY = "snippets"
 HOTKEY_KEYS = ("hotkeys.dictate", "hotkeys.edit", "hotkeys.cancel", "insert.paste_keys",
                "insert.copy_keys")
 _OPTIONAL_HOTKEYS = ("hotkeys.edit", "hotkeys.cancel")
@@ -71,7 +72,8 @@ def hotkey_problem(key: str, text: str, values: dict[str, Any]) -> str | None:
         except ChordError:
             pass
     return None
-_SECTIONS = tuple(f.name for f in dataclasses.fields(Config) if f.name != APPS_KEY)
+_SECTIONS = tuple(f.name for f in dataclasses.fields(Config)
+                  if f.name not in (APPS_KEY, SNIPPETS_KEY))
 PROFILE_FIELDS = tuple(f.name for f in dataclasses.fields(AppProfile))
 
 
@@ -97,6 +99,7 @@ def flatten(config: Config) -> dict[str, Any]:
         part = getattr(config, section)
         for f in dataclasses.fields(part):
             values[f"{section}.{f.name}"] = _plain(getattr(part, f.name))
+    values[SNIPPETS_KEY] = dict(config.snippets)
     values[APPS_KEY] = [profile_to_dict(p) for p in config.apps]
     return values
 
@@ -111,6 +114,8 @@ def all_keys() -> list[str]:
 
 
 def field_type(key: str) -> Any:
+    if key == SNIPPETS_KEY:
+        return dict[str, str]
     section, _, name = key.partition(".")
     return typing.get_type_hints(type(getattr(Config(), section)))[name]
 
@@ -133,6 +138,11 @@ def coerce(key: str, value: Any) -> Any:
     if origin is dict:
         return {str(k): str(v) for k, v in value.items()}
     return str(value)  # str and Literal[...] fields
+
+
+def _toml_text(value: str) -> Any:
+    """A string for config.toml; several lines as a multi-line string."""
+    return tomlkit.string(value, multiline=True) if "\n" in value else value
 
 
 # --------------------------------------------------------------------------- TOML editing
@@ -204,6 +214,14 @@ def _apply(doc: tomlkit.TOMLDocument, key: str, value: Any) -> None:
             doc[APPS_KEY] = aot
         elif APPS_KEY in doc:
             del doc[APPS_KEY]
+        return
+    if key == SNIPPETS_KEY:
+        table = _table(doc, SNIPPETS_KEY)
+        for old in [k for k in table if k not in value]:
+            del table[old]
+        for phrase, text in value.items():
+            if phrase not in table or table[phrase] != text:
+                _put(table, phrase, _toml_text(text))
         return
     section, _, name = key.partition(".")
     table = _table(doc, section)
