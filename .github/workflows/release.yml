@@ -24,7 +24,7 @@ jobs:
         run: uv run --no-project python scripts/build_release.py --tag "${{ github.ref_name }}" --out dist
 
       - name: Publish the release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: Keynone ${{ github.ref_name }}
           body_path: dist/release-notes.md
