@@ -4,7 +4,9 @@ Notable changes to Keynone. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
-## [0.2.0] - unreleased
+## [Unreleased]
+
+## [0.2.0] - 2026-10-07
 
 ### Added
 
@@ -50,9 +52,13 @@ Notable changes to Keynone. The format follows
 - A config change detected when a dictation started replaced the hotkey state in
   the middle of that dictation, so its release could be missed.
 
-## [0.1.0]
+## [0.1.0] - 2026-10-05
 
 First working version (not released on its own): hold Ctrl+Win to dictate into
 any app, live preview, filler and repetition removal, self-corrections, lists,
 voice commands, app profiles, dictionary, history, and a dormant listener that
 loads the speech engine only on demand.
+
+[Unreleased]: https://github.com/aamir-coding/keynone/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/aamir-coding/keynone/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/aamir-coding/keynone/releases/tag/v0.1.0
