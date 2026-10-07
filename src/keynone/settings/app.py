@@ -22,6 +22,7 @@ from keynone.config import ConfigError
 from keynone.editions import LANGUAGES, MULTILINGUAL_MODEL
 from keynone.paths import Paths, get_paths
 from keynone.settings.history_view import HistoryView
+from keynone.settings.home_view import HomeView
 from keynone.settings.model import HOTKEY_KEYS, SettingsModel
 from keynone.settings.schema import SECTIONS, Field, Option, Section
 from keynone.settings.system import GPU_RUNTIME, System
@@ -112,8 +113,12 @@ class SettingsApp:
         self._disk_notice_shown = False
         self._gpus: list[str] | None = None
         self.history: HistoryView | None = None  # built when the page is first shown
+        self.home: HomeView | None = None
         self._build_shell()
-        self.show_section(SECTIONS[0].id)
+        self.show_section("home")
+        # Built now though not shown, so a shortcut in the file that can't be used is
+        # flagged (and blocks saving) from the start.
+        self.pages["general"] = self._build_section(self._section("general"))
         self._show_file_error()
         self._update_footer()
         self.root.after(1500, self._watch)
@@ -150,8 +155,8 @@ class SettingsApp:
         nav.grid(row=1, column=0, sticky="we", pady=(px(6), 0))
         nav.columnconfigure(1, weight=1)
         for row, (section_id, title) in enumerate(
-                [(s.id, s.title) for s in SECTIONS] + [("history", "History"),
-                                                       ("about", "About")]):
+                [("home", "Home"), *[(s.id, s.title) for s in SECTIONS],
+                 ("history", "History"), ("about", "About")]):
             self._nav_item(nav, row, section_id, title)
         bottom = tk.Frame(sidebar, background=p.sidebar)
         bottom.grid(row=3, column=0, sticky="we", padx=px(18), pady=(0, px(16)))
@@ -264,7 +269,8 @@ class SettingsApp:
             self.pages[self.section_id].frame.pack_forget()
         self.section_id = section_id
         if section_id not in self.pages:
-            builders: dict[str, Callable[[], _Page]] = {"about": self._build_about,
+            builders: dict[str, Callable[[], _Page]] = {"home": self._build_home,
+                                                         "about": self._build_about,
                                                          "history": self._build_history}
             builder = builders.get(section_id)
             self.pages[section_id] = (builder() if builder is not None
@@ -272,8 +278,17 @@ class SettingsApp:
         self.pages[section_id].frame.pack(fill="both", expand=True)
         self._paint_nav()
         self.scroll.to_top()
-        if section_id == "history" and self.history is not None:
-            self.history.refresh()
+        view = self._live_view()
+        if view is not None:
+            view.refresh()
+
+    def _live_view(self) -> HomeView | HistoryView | None:
+        """The page shown now, if it shows what happens outside the window."""
+        if self.section_id == "home":
+            return self.home
+        if self.section_id == "history":
+            return self.history
+        return None
 
     @staticmethod
     def _section(section_id: str) -> Section:
@@ -442,6 +457,17 @@ class SettingsApp:
                     widget.grid()
                 else:
                     widget.grid_remove()
+
+    # ----------------------------------------------------------------- home
+
+    def _build_home(self) -> _Page:
+        page = self._page("Home", "What Keynone is doing, your shortcuts, and how much you "
+                                  "have dictated. All of it stays on this computer.")
+        self.home = HomeView(page.frame, theme=self.theme, system=self.system,
+                             setting=self.model.saved,  # what Keynone uses now
+                             card=lambda title: self._card(page, title),
+                             show_section=self.show_section)
+        return page
 
     # ----------------------------------------------------------------- history
 
@@ -696,6 +722,8 @@ class SettingsApp:
             control.refresh()  # may flag a value from the file again (e.g. a bad shortcut)
             control.set_enabled(self.model.error is None)
             self._update_notes(key)
+        if self.home is not None:
+            self.home.refresh()  # e.g. a new shortcut was saved
         self._show_file_error()
         self._update_footer()
 
@@ -709,8 +737,9 @@ class SettingsApp:
                 self.save()
                 if self._changes():
                     return  # saving failed: the footer says why
-        if self.history is not None:
-            self.history.close()
+        for view in (self.history, self.home):
+            if view is not None:
+                view.close()
         self.root.destroy()
 
     # ================================================================= the file on disk
@@ -728,8 +757,9 @@ class SettingsApp:
                     self._banner("config.toml was changed by another program. Saving merges "
                                  "your changes into it; Revert loads it as it is now.")
             self._update_sidebar()
-            if self.section_id == "history" and self.history is not None:
-                self.history.poll()  # a dictation made meanwhile shows up
+            view = self._live_view()
+            if view is not None:
+                view.poll()  # a dictation made meanwhile shows up
         except Exception:
             log.exception("watching config.toml failed")
         self.root.after(1500, self._watch)

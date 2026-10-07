@@ -95,9 +95,11 @@ every dictation.
 ## Settings
 
 **The settings window:** tray icon → *Settings...*, double-click
-`Keynone-settings.cmd`, or run `keynone settings`. It has every option, in plain
-words, with the rarely needed ones behind *Show advanced settings*. It follows
-the Windows light/dark mode.
+`Keynone-settings.cmd`, or run `keynone settings`. It opens on a Home page (is
+Keynone running, your shortcuts, how many words you've dictated and the time that
+saved), has every option in plain words, with the rarely needed ones behind
+*Show advanced settings*, and a History page. It follows the Windows light/dark
+mode.
 
 ![The settings window](docs/images/settings.png)
 

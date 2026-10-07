@@ -93,6 +93,9 @@ class FakeSystem(System):
     def copy_text(self, text: str) -> None:
         self.calls.append(("copy", text))
 
+    def start_listener(self) -> None:
+        self.calls.append(("start",))
+
 
 @pytest.fixture(scope="module")
 def _tk() -> Iterator[tk.Tk]:
@@ -489,3 +492,51 @@ def _button(widget: tk.Misc, text: str) -> ttk.Button:
         if found is not None:
             return found
     return None  # type: ignore[return-value]
+
+
+def test_home_page(root: tk.Tk, paths: Paths, monkeypatch: pytest.MonkeyPatch) -> None:
+    from keynone.engine.history import History
+
+    monkeypatch.setattr(FakeSystem, "listener_running", lambda self: False)
+    app, system = _app(root, paths)
+    assert app.section_id == "home"  # the window opens on it
+    home = app.home
+    assert home is not None
+    assert "isn't running" in str(home.state.cget("text"))
+    home.start.invoke()
+    assert ("start",) in system.calls
+    labels = _texts(home.keys)
+    assert "Dictate" in labels and "Paste the last dictation again" in labels
+    assert "after your first dictation" in _texts(home.stats)
+
+    history = History(paths.history_db)
+    history.add(app="notepad.exe", title="", raw_text="", final_text="One two three four.",
+                audio_seconds=12.0, latency_ms=0, llm_calls=0, method="paste")
+    history.close()
+    home.poll()
+    tiles = _texts(home.stats)
+    assert "words dictated" in tiles and "4" in tiles and "dictations" in tiles
+
+    # a saved new shortcut shows up
+    app.show_section("general")
+    control = app.controls["hotkeys.paste_last"]
+    assert isinstance(control, HotkeyControl)
+    control.var.set("f8")
+    control._commit()
+    app.save()
+    app.show_section("home")
+    keycaps = [w.cget("text") for w in _labels(home.keys)]
+    assert "F8" in keycaps
+
+    app.model.set("history.enabled", False)
+    app.save()
+    assert "history, which is off" in _texts(home.stats)
+
+
+def _labels(widget: tk.Misc) -> list[tk.Label]:
+    out: list[tk.Label] = []
+    for child in widget.winfo_children():
+        if isinstance(child, tk.Label):
+            out.append(child)
+        out += _labels(child)
+    return out
