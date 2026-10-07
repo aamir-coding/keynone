@@ -55,6 +55,9 @@ def test_file_mentions() -> None:
     assert dictate("Look at main dot py, the function at line forty.") == (
         "Look at main.py, the function at line forty.")
     assert dictate("The bug is at app dot tsx.") == "The bug is at app.tsx."
+    # recognizers often write "py" as "pi"; after "at" it can only be the file
+    assert dictate("Explain at main dot pi.") == "Explain @main.py."
+    assert dictate("Print math dot pi.") == "Print math.pi."
     # only the prompt style mentions files
     assert dictate("Explain at main dot py.", style="default") == "Explain at main.py."
 
@@ -70,6 +73,19 @@ def test_file_mentions() -> None:
     ("I prefer camel case for variables", "I prefer camel case for variables"),
 ])
 def test_casing_commands(said: str, written: str) -> None:
+    assert convert(said, style="prompt").text == written
+
+
+@pytest.mark.parametrize(("said", "written"), [
+    # The recognizer drops a spoken "dash" but keeps "hyphen" and "minus".
+    ("Git commit hyphen M fix the login bug", "Git commit -m fix the login bug"),
+    ("Git commit minus M fix the login bug", "Git commit -m fix the login bug"),
+    ("ls minus la", "ls -la"),
+    ("git log dash dash oneline", "git log --oneline"),
+    ("It is a well hyphen known issue", "It is a well-known issue"),  # not a command
+    ("five minus three is two", "five minus three is two"),
+])
+def test_options_in_command_lines(said: str, written: str) -> None:
     assert convert(said, style="prompt").text == written
 
 
