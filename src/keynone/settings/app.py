@@ -23,6 +23,7 @@ from keynone.editions import LANGUAGES, MULTILINGUAL_MODEL
 from keynone.paths import Paths, get_paths
 from keynone.settings.history_view import HistoryView
 from keynone.settings.home_view import HomeView
+from keynone.settings.learned_view import LearnedView
 from keynone.settings.model import HOTKEY_KEYS, SettingsModel
 from keynone.settings.schema import SECTIONS, Field, Option, Section
 from keynone.settings.system import GPU_RUNTIME, System
@@ -114,6 +115,7 @@ class SettingsApp:
         self._gpus: list[str] | None = None
         self.history: HistoryView | None = None  # built when the page is first shown
         self.home: HomeView | None = None
+        self.learned: LearnedView | None = None
         self._build_shell()
         self.show_section("home")
         # Built now though not shown, so a shortcut in the file that can't be used is
@@ -282,12 +284,14 @@ class SettingsApp:
         if view is not None:
             view.refresh()
 
-    def _live_view(self) -> HomeView | HistoryView | None:
+    def _live_view(self) -> HomeView | HistoryView | LearnedView | None:
         """The page shown now, if it shows what happens outside the window."""
         if self.section_id == "home":
             return self.home
         if self.section_id == "history":
             return self.history
+        if self.section_id == "dictionary":
+            return self.learned
         return None
 
     @staticmethod
@@ -362,6 +366,10 @@ class SettingsApp:
                 first = False
         if section.id == "apps":
             self._builtin_profiles(page)
+        if section.id == "dictionary":
+            self.learned = LearnedView(self._card(page, "Learned from your corrections"),
+                                       theme=self.theme, system=self.system,
+                                       status=lambda text: self._status(text, "Ok.TLabel", 5))
         self._apply_advanced(page)
         return page
 

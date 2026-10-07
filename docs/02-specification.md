@@ -107,6 +107,7 @@ scope: mobile platforms, cloud sync.
 * **FR-59 History page:** the settings window lists the dictations in `history.db`, newest first, 50 at a time: the text, when, the app, the length and how it went in (speak-to-edit, copied rather than typed); search (any case, `%`/`_` taken literally), Copy, Delete, Clear history (confirmed). The page never creates `history.db`; with the history off it says so and links to Display & privacy; dictations made while it is open appear within a few seconds.
 * **FR-60 Paste last dictation** (`hotkeys.paste_last`, default `Alt+Shift+V`, `""` = off): the listener pastes the newest dictation from the history again into the app in front - without the engine, through the same paste/type path and app profile as a dictation - once the hotkey's modifiers are released. Its key is swallowed (also its repeats and release); a chord that contains the dictation chord (`Ctrl+Win+V`) cancels the dictation its first keys started, but only within the hold threshold, never a dictation under way. With the history off or empty, a tray message says why. The shortcut must differ from the dictation and edit shortcuts.
 * **FR-61 Home page** (the settings window opens on it): whether Keynone is running (with *Start Keynone* if not), the shortcuts in use as key caps, and statistics - words dictated (all and the last 7 days), time saved compared with typing at 40 words a minute, speaking speed, dictations and since when, and words per day for the last 14 days. The statistics are daily counts in `history.db` (no text; speak-to-edit not counted), kept past the history's retention, counted once for dictations kept from 0.2, reset by *Clear history*; with the history off nothing is counted and the page says so. One tip at a time about a lesser-known feature.
+* **FR-62 Learning from corrections** (`dictionary.learn`, on by default): after a dictation is inserted, the engine reads that text box (UI Automation) about 4, 10, 18, 30, 45 and 60 s later. It aligns the dictation with the text (word diff); a replaced span of 1-3 words is learned when it fixes how a name or term was heard - a similar spelling that looks like a name ("Amid" → "Aamir", "Sara" → "Sarah"), more capitals ("github" → "GitHub") or joined words ("Chat GPT" → "ChatGPT") - and has stayed the same for two reads (not a word still being typed). Not learned: a different word, grammar ("there" → "their"), numbers, a sentence's capital, a lowercase word for a name unless nearly identical, more than three fixes at once (rewriting). Learned spellings live in `data/learned.db` and apply to later dictations: exact ones only where the recognizer wrote the same thing and not at a sentence start unless learned there ("Amid the noise" stays), casing and spacing fixes in any case. A tray message says what was learned; Settings → Dictionary lists the spellings with Remove / Remove all. Not watched: terminals, code-style apps, password fields, speak-to-edit; a new dictation stops the watch.
 
 ## 2.4 Non-functional requirements
 
@@ -178,7 +179,8 @@ overlay UI thread, model loaders. sherpa-onnx and llama.cpp release the GIL.
 | `bin/llama.cpp-*/` | llama-server runtime |
 | `data/config.toml` | User settings (copied from `src/keynone/default_config.toml`); `config.toml.bak` after *Restore the default settings* |
 | `edition.txt` | Only in release downloads: `base` or `languages` (what a plain setup downloads) |
-| `data/history.db` | `dictations(id, created_at, app, raw_text, final_text, audio_seconds, latency_ms, llm_calls, method)` |
+| `data/history.db` | `dictations(id, created_at, app, raw_text, final_text, audio_seconds, latency_ms, llm_calls, method)`; `daily(day, dictations, words, audio_seconds)` - counts only, for the statistics |
+| `data/learned.db` | `learned(heard, written, at_start, exact, created_at)` - spellings learned from corrections (FR-62) |
 | `data/logs/` | Rotating logs; transcripts only if `privacy.log_transcripts = true` |
 | `data/cache/` | LLM prompt-prefix slot files (3-25 MB each; unused for 14 days → deleted, at most 8 kept), generated icons and sounds |
 
@@ -191,6 +193,7 @@ The only optional exception is `keynone autostart enable` (Startup shortcut).
 * Keyboard hook processes keys in memory only; it ignores Keynone's own tagged input.
 * Clipboard content is marked private (excluded from Win+V history and cloud sync).
 * Password fields are skipped; window titles are not stored in history.
+* Learning from corrections reads the text box a dictation went into during the following minute only, through UI Automation, compares it in memory and keeps nothing but the two spellings it learns (never logged); not in terminals, code-style apps or password fields; off with `dictionary.learn = false`.
 * The listener's window messages from other processes can only ask it to reread
   `config.toml` or to ignore the hotkeys for at most 60 s (never during a
   dictation); neither carries data. The settings window writes nothing but

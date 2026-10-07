@@ -540,3 +540,26 @@ def _labels(widget: tk.Misc) -> list[tk.Label]:
             out.append(child)
         out += _labels(child)
     return out
+
+
+def test_learned_spellings_on_the_dictionary_page(root: tk.Tk, paths: Paths,
+                                                  monkeypatch: pytest.MonkeyPatch) -> None:
+    from keynone.learning import Learned, LearnedStore
+
+    app, _ = _app(root, paths)
+    app.show_section("dictionary")
+    view = app.learned
+    assert view is not None and "Nothing learned yet" in _texts(view.body)
+    store = LearnedStore(paths.learned_db)
+    store.add(Learned("Amid", "Aamir"))
+    store.add(Learned("github", "GitHub", exact=False))
+    store.close()
+    view.poll()  # learned by the engine meanwhile
+    shown = _texts(view.body)
+    assert "Aamir" in shown and "heard as “Amid”" in shown and "GitHub" in shown
+    _button(view.body, "Remove").invoke()  # the newest: GitHub
+    assert "GitHub" not in _texts(view.body) and "Aamir" in _texts(view.body)
+    monkeypatch.setattr("tkinter.messagebox.askyesno", lambda *a, **k: True)
+    _button(view.body, "Remove all").invoke()
+    assert "Nothing learned yet" in _texts(view.body)
+    assert app.controls["dictionary.learn"] is not None  # the switch is on the page too

@@ -31,6 +31,11 @@ Notable changes to Keynone. The format follows
   one to use it again, delete one or clear them all.
 - **Paste last dictation:** Alt+Shift+V pastes your last dictation again, for
   when it went into the wrong window (`hotkeys.paste_last`, Settings → General).
+- **Learns from your corrections:** when you fix a name Keynone typed within a
+  minute ("Amid" → "Aamir", "github" → "GitHub"), it uses your spelling from then
+  on. It reads that text box only during that minute and keeps only the two
+  spellings; Settings → Dictionary lists them, each with Remove
+  (`dictionary.learn`).
 - **Home page** in the settings window: whether Keynone is running, your
   shortcuts, and your statistics: words dictated, time saved compared with
   typing, speaking speed, and the last two weeks at a glance. Counts only, kept

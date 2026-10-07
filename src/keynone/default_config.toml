@@ -120,6 +120,11 @@ log_transcripts = false
 [dictionary]
 # Names and jargon spelled your way. Also given to the LLM as spelling hints.
 words = []
+# When you fix a name Keynone typed ("Amid" -> "Aamir") within a minute of the
+# dictation, it keeps your spelling for next time. It reads that text box only
+# during that minute and stores only the two spellings (data/learned.db); the
+# settings window lists them (Dictionary). false = off.
+learn = true
 
 [dictionary.replacements]
 # "chat gpt" = "ChatGPT"

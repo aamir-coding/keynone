@@ -14,14 +14,16 @@ import sys
 import threading
 import time
 
-from keynone.config import load_config
+from keynone.config import AppProfile, load_config
 from keynone.editions import without_missing_language_pack
 from keynone.engine.history import History
 from keynone.engine.inject import Inserter
+from keynone.engine.learn_watch import CorrectionWatcher
 from keynone.engine.models import EngineModels
 from keynone.engine.overlay import Overlay
 from keynone.engine.session import Session, SessionMeta, SessionOutcome
 from keynone.ipc import EventWriter, Msg, ProtocolError, read_frame
+from keynone.learning import LearnedStore, learns_in
 from keynone.logging_setup import setup_logging
 from keynone.paths import get_paths
 from keynone.win32 import api
@@ -57,9 +59,19 @@ def run_engine(*, verbose: bool = False, overlay_enabled: bool | None = None) ->
                       retention_days=config.history.retention_days)
     inserter = Inserter(config.insert)
     uia: UiaClient | None = None
-    if config.insert.smart_spacing or config.hotkeys.edit:
+    if config.insert.smart_spacing or config.hotkeys.edit or config.dictionary.learn:
         uia = UiaClient()
         uia.warm_up()  # first use builds COM wrappers (~1 s): do it while models load
+    learned = LearnedStore(paths.learned_db)
+    watcher: CorrectionWatcher | None = None
+    if uia is not None and config.dictionary.learn:
+        watcher = CorrectionWatcher(uia, learned, on_learned=lambda items: events.send(
+            "learned", items=[{"heard": i.heard, "written": i.written} for i in items]))
+
+    def inserted(text: str, profile: AppProfile) -> None:
+        if watcher is not None and learns_in(profile):
+            watcher.watch(text)  # the next minute: did the user fix a name?
+
     events.send("hello", pid=os.getpid())
     threading.Thread(target=_report_ready, args=(models, events, started), daemon=True).start()
 
@@ -86,10 +98,14 @@ def run_engine(*, verbose: bool = False, overlay_enabled: bool | None = None) ->
                 if current is not None:
                     current.feed(payload)
             elif kind is Msg.START:
+                if watcher is not None:
+                    watcher.stop()  # the text box changes for other reasons from now on
                 meta = SessionMeta(**json.loads(payload))
                 current = Session(meta, config=config, models=models, overlay=overlay,
                                   inserter=inserter, history=history, on_finished=finished,
-                                  on_event=events.send, uia=uia)
+                                  on_event=events.send, uia=uia,
+                                  learned=learned.entries() if config.dictionary.learn else (),
+                                  on_inserted=inserted)
                 current.start()
             elif kind is Msg.STOP:
                 if current is not None:
@@ -106,9 +122,12 @@ def run_engine(*, verbose: bool = False, overlay_enabled: bool | None = None) ->
         if current is not None and not current.done.is_set():
             current.cancel()
             current.done.wait(5)
+        if watcher is not None:
+            watcher.stop()
         models.close()
         overlay.close()
         history.close()
+        learned.close()
         if uia is not None:
             uia.close()
         job.close()
