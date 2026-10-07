@@ -28,6 +28,11 @@ double_tap_ms = 400
 # dictation pays the ~5 s model load (audio is buffered - nothing is lost, but
 # the live text appears late).
 keep_warm_seconds = 300
+# Smart warm-up: while you dictate often, the engine stays loaded longer (15 minutes
+# after 2 dictations within half an hour, 30 minutes after 3 within an hour), so the
+# next dictation starts at once. It still unloads after 10 minutes without keyboard
+# or mouse input, and gets no extra time while battery saver is on.
+smart_warm = true
 
 [audio]
 # Part of the microphone name to use; empty = Windows default input device.
