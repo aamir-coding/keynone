@@ -22,6 +22,11 @@ Notable changes to Keynone. The format follows
   userName, "snake case get user by id" → get_user_by_id; "explain at main dot
   py" → "explain @main.py". Choose it for your own profiles too.
 
+- **Snippets:** saved text inserted by voice. Say the phrase on its own ("my
+  address"), or "insert" and the phrase while dictating ("you can reach me at
+  insert my email"); the text goes in exactly as written, several lines too.
+  Settings → Snippets, or `[snippets]` in config.toml.
+
 ### Changed
 
 - Terminals no longer turn the local AI off: prompts dictated to Claude Code or

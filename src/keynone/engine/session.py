@@ -13,7 +13,7 @@ from typing import Any
 import numpy as np
 
 from keynone.audio_level import LevelNormalizer
-from keynone.cleanup import formatting, guard, rules
+from keynone.cleanup import formatting, guard, rules, snippets
 from keynone.cleanup.language import detect_language
 from keynone.cleanup.pipeline import CleanupPipeline, CleanupSettings
 from keynone.cleanup.rules import RuleOptions
@@ -56,6 +56,29 @@ class SessionOutcome:
     live_lag_max_ms: int = 0
     llm_calls: int = 0
     message: str = ""
+
+
+def compose(cleaned: str, profile: AppProfile, config: Config, *,
+            spoken_end: bool = False) -> tuple[str, Style]:
+    """The text to insert for a cleaned dictation, before smart spacing, and the style
+    it is written in. Snippet placeholders in it are filled in after smart spacing."""
+    saved = snippets.whole(cleaned, config.snippets.items())
+    if saved is not None:  # "my address": the saved text, exactly as written
+        return saved, "code"
+    if any(snippets.is_placeholder(c) for c in cleaned) and not any(c.isalnum() for c in cleaned):
+        # "insert my address" on its own: only the saved text, without the period after it
+        return "".join(c for c in cleaned if snippets.is_placeholder(c)), "code"
+    style = formatting.effective_style(profile.style, cleaned)
+    if style == "code" and formatting.looks_like_command(cleaned):
+        cleaned = formatting.as_command(cleaned)  # "Git status." -> "git status"
+    text = formatting.finalize(
+        cleaned,
+        style=style,
+        # A period the user said ("... see you soon period") stays, even in chats.
+        drop_final_period=bool(profile.drop_final_period) and not spoken_end,
+        trailing_space=False,
+    )
+    return text, style
 
 
 def _rms(pcm: bytes) -> tuple[float, int]:
@@ -199,6 +222,7 @@ class Session:
             translate_to=cfg.cleanup.translate_to,
             spoken_punctuation=cfg.cleanup.spoken_punctuation,
             style=self.profile.style,
+            snippets=tuple(cfg.snippets.items()),
         )
 
     def _process(self) -> SessionOutcome:
@@ -258,7 +282,7 @@ class Session:
             self._pipeline.add_sentence(sentence)
         result = self._pipeline.finish(timeout=cfg.cleanup.llm_timeout_seconds + 0.5)
         return self._deliver(raw, result.text, result.llm_calls, stream.seconds,
-                             spoken_end=result.spoken_end)
+                             spoken_end=result.spoken_end, placeholders=result.snippets)
 
     # ----------------------------------------------------------------- dictation
 
@@ -286,28 +310,22 @@ class Session:
         return text, False
 
     def _deliver(self, raw: str, cleaned: str, llm_calls: int, seconds: float, *,
-                 spoken_end: bool = False) -> SessionOutcome:
+                 spoken_end: bool = False,
+                 placeholders: dict[str, str] | None = None) -> SessionOutcome:
         target: WindowInfo = window_info()  # wherever the user is now
         profile = self.config.profile_for(target.exe, target.title)
         trailing = (profile.trailing_space if profile.trailing_space is not None
                     else self.config.insert.trailing_space)
-        style = formatting.effective_style(profile.style, cleaned)
-        if style == "code" and formatting.looks_like_command(cleaned):
-            cleaned = formatting.as_command(cleaned)  # "Git status." -> "git status"
-        text = formatting.finalize(
-            cleaned,
-            style=style,
-            # A period the user said ("... see you soon period") stays, even in chats.
-            drop_final_period=bool(profile.drop_final_period) and not spoken_end,
-            trailing_space=False,
-        )
+        text, style = compose(cleaned, profile, self.config, spoken_end=spoken_end)
         base = self._base(raw, seconds, llm_calls)
         if not text.strip(" \t"):  # just "new paragraph" is something to insert
             self.overlay.update(status="No speech detected", tone="idle", text="")
             self.overlay.hide(1200)
             return SessionOutcome(status="empty", **base)
-        self.overlay.update(text=text.strip())
+        filled = placeholders or {}
+        self.overlay.update(text=snippets.fill(text, filled).strip())
         if not self.meta.insert or self.inserter is None:
+            text = snippets.fill(text, filled)
             if trailing and not text.endswith("\n"):
                 text += " "
             self.overlay.update(status="Done (dry run)", tone="done")
@@ -315,6 +333,7 @@ class Session:
             return SessionOutcome(status="dry_run", text=text, latency_ms=self._latency(),
                                   **base)
         text, password = self._fit_to_cursor(text, style, trailing)
+        text = snippets.fill(text, filled)  # after smart spacing: the saved text stays as is
         if password:
             self.overlay.update(status="Password field - not inserted", tone="error")
             self.overlay.hide(3500)

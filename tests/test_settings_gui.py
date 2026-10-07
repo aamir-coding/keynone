@@ -29,6 +29,7 @@ from keynone.settings.widgets import (
     HotkeyControl,
     NumberControl,
     ReplacementsControl,
+    SnippetsControl,
     SwitchControl,
     WordsControl,
     chord_text,
@@ -389,3 +390,39 @@ def test_recorded_keys_become_hotkey_names() -> None:
     assert chord_text([("ctrl", "rctrl")]) == "rctrl"  # alone: the side matters
     assert chord_text([("win", "lwin"), ("ctrl", "lctrl")]) == "ctrl+win"
     assert chord_text([("ctrl", "lctrl"), ("alt", "lalt"), ("e", "e")]) == "ctrl+alt+e"
+
+
+def test_snippets_page(root: tk.Tk, paths: Paths) -> None:
+    app, _ = _app(root, paths)
+    app.show_section("snippets")
+    control = app.controls["snippets"]
+    assert isinstance(control, SnippetsControl) and control.cards == []
+    control._add()
+    card = control.cards[0]
+    card.phrase.set("My address")
+    card.text.insert("1.0", "221B Baker Street\nLondon")
+    card._modified()
+    assert not app.problems
+    control._add()
+    control.cards[1].phrase.set("my  address")  # the same words again
+    control.cards[1].text.insert("1.0", "x")
+    control.cards[1]._modified()
+    assert "twice" in app.problems["snippets"]
+    control.remove(control.cards[1])
+    assert not app.problems
+    app.save()
+    assert _saved(paths).snippets == {"My address": "221B Baker Street\nLondon"}
+    text = paths.config_file.read_text(encoding="utf-8")
+    assert '"My address" = """221B Baker Street' in text  # several lines, readable
+    assert "# Text you insert by voice." in text  # the comments stay
+
+    control._add()
+    control.cards[-1].phrase.set("insert my email")
+    control.cards[-1].text.insert("1.0", "jane@example.com")
+    control.cards[-1]._modified()
+    assert "Leave" in app.problems["snippets"]
+    control.cards[-1].phrase.set("my email")
+    assert not app.problems
+    control.cards[-1].text.delete("1.0", "end")
+    control.cards[-1]._modified()
+    assert "no text" in app.problems["snippets"]

@@ -42,7 +42,7 @@ def test_kinds_match_the_config_types() -> None:
             assert tp is float, f.key
         elif f.kind == "words":
             assert typing.get_origin(tp) is list, f.key
-        elif f.kind == "replacements":
+        elif f.kind in ("replacements", "snippets"):
             assert typing.get_origin(tp) is dict, f.key
         else:
             assert tp is str or typing.get_origin(tp) is typing.Literal, f.key
