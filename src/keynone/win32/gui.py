@@ -8,6 +8,7 @@ import math
 import struct
 from collections.abc import Callable
 from ctypes import wintypes
+from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar
 
@@ -150,12 +151,27 @@ def load_icon(path: Path, size: int = 0) -> int:
 NIM_ADD, NIM_MODIFY, NIM_DELETE = 0, 1, 2
 NIF_MESSAGE, NIF_ICON, NIF_TIP, NIF_INFO = 0x1, 0x2, 0x4, 0x10
 NIIF_INFO, NIIF_WARNING = 0x1, 0x2
-MF_STRING, MF_SEPARATOR, MF_GRAYED = 0x0, 0x800, 0x1
+MF_STRING, MF_SEPARATOR, MF_GRAYED, MF_CHECKED, MF_POPUP = 0x0, 0x800, 0x1, 0x8, 0x10
+MF_BYCOMMAND = 0x0
 TPM_RIGHTBUTTON, TPM_RETURNCMD, TPM_NONOTIFY = 0x2, 0x100, 0x80
 WM_TRAY = api.WM_APP + 1
 WM_NULL = 0x0000
 
-MenuItem = tuple[str, Callable[[], None] | None]  # ("-", None) is a separator
+
+@dataclass(frozen=True)
+class MenuEntry:
+    """A tray menu item: a command, a switch (``checked``), one of a group of choices
+    (``radio``: shown with a dot) or a submenu."""
+
+    label: str
+    action: Callable[[], None] | None = None
+    checked: bool = False
+    radio: bool = False
+    submenu: tuple[MenuEntry, ...] = ()
+
+
+# A plain item: (label, action); ("-", None) is a separator, an action of None greys it out.
+MenuItem = MenuEntry | tuple[str, Callable[[], None] | None]
 
 
 class TrayIcon(Window):
@@ -215,16 +231,33 @@ class TrayIcon(Window):
             api.Shell_NotifyIconW(NIM_DELETE, ctypes.byref(self._data(0)))
             self.destroy()
 
+    @staticmethod
+    def _fill(menu: int, items: list[MenuItem], actions: list[Callable[[], None] | None]) -> None:
+        """Add ``items`` to ``menu``; command ids index ``actions`` (from 1)."""
+        for item in items:
+            entry = item if isinstance(item, MenuEntry) else MenuEntry(item[0], item[1])
+            if entry.label == "-":
+                api.AppendMenuW(menu, MF_SEPARATOR, 0, None)
+            elif entry.submenu:
+                submenu = api.CreatePopupMenu()  # destroyed with its parent
+                TrayIcon._fill(submenu, list(entry.submenu), actions)
+                api.AppendMenuW(menu, MF_STRING | MF_POPUP, submenu, entry.label)
+            else:
+                actions.append(entry.action)
+                command = len(actions)
+                flags = MF_STRING | (MF_GRAYED if entry.action is None else 0)
+                if entry.checked and not entry.radio:
+                    flags |= MF_CHECKED
+                api.AppendMenuW(menu, flags, command, entry.label)
+                if entry.checked and entry.radio:  # a dot rather than a check mark
+                    api.CheckMenuRadioItem(menu, command, command, command, MF_BYCOMMAND)
+
     def _show_menu(self) -> None:
         items = self._menu()
+        actions: list[Callable[[], None] | None] = []
         menu = api.CreatePopupMenu()
         try:
-            for index, (label, action) in enumerate(items, start=1):
-                if label == "-":
-                    api.AppendMenuW(menu, MF_SEPARATOR, 0, None)
-                else:
-                    api.AppendMenuW(menu, MF_STRING | (MF_GRAYED if action is None else 0),
-                                    index, label)
+            self._fill(menu, items, actions)
             point = wintypes.POINT()
             api.GetCursorPos(ctypes.byref(point))
             api.SetForegroundWindow(self.hwnd)  # required so the menu closes properly
@@ -233,8 +266,8 @@ class TrayIcon(Window):
             api.PostMessageW(self.hwnd, WM_NULL, 0, 0)
         finally:
             api.DestroyMenu(menu)
-        if choice:
-            action = items[choice - 1][1]
+        if choice and 0 < choice <= len(actions):
+            action = actions[choice - 1]
             if action:
                 action()
 

@@ -78,7 +78,9 @@ Then double-click **`Keynone.cmd`**. A microphone icon appears in the tray.
 * **Select text, hold Ctrl+Win+Alt** and say how to change it → release; the
   selection is replaced (Ctrl+Z undoes it in most apps).
 * **Esc** → cancel.
-* Settings: tray icon → *Settings...*, or `Keynone-settings.cmd`.
+* Settings: tray icon → *Settings...*, or `Keynone-settings.cmd`. The tray menu also
+  has quick switches: AI polish, spoken punctuation, sounds, the overlay, the
+  microphone (and the language, with the language pack).
 * Stop: tray icon → *Quit Keynone*, or `Keynone-stop.cmd`.
 
 The first dictation after Keynone has been idle takes ~5 s before live text

@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from keynone.config import Config
-from keynone.listener.main import ListenerApp, engine_settings_changed
+from keynone.listener.main import ListenerApp, engine_restart_needed
 from keynone.paths import Paths
 from keynone.win32.keys import Chord
 
@@ -82,23 +82,49 @@ def test_hotkeys_are_not_suspended_during_a_dictation(app: ListenerApp) -> None:
 
 
 @pytest.mark.parametrize(("section", "name", "value", "restart"), [
+    # read by the listener, or by the engine again for every dictation
     ("hotkeys", "dictate", "f9", False),
     ("hotkeys", "hold_threshold_ms", 250, False),
     ("lifecycle", "keep_warm_seconds", 0, False),
     ("audio", "cues", False, False),
     ("audio", "device", "USB", False),
-    ("hotkeys", "edit", "", True),  # the engine loads the LLM for speak-to-edit
-    ("audio", "normalize_level", False, True),
-    ("asr", "language", "auto", True),
-    ("insert", "method", "type", True),
+    ("audio", "normalize_level", False, False),
+    ("insert", "method", "type", False),
+    ("cleanup", "spoken_punctuation", False, False),
+    ("cleanup", "llm_mode", "off", False),  # a loaded LLM simply goes unused
+    ("cleanup", "translate_to", "Spanish", False),
+    ("overlay", "enabled", False, False),
+    ("history", "enabled", False, False),
+    ("dictionary", "replacements", {"a": "b"}, False),
+    ("hotkeys", "edit", "", False),  # the LLM stays loaded for polishing
+    # loaded when the engine starts
+    ("asr", "language", "auto", True),  # the multilingual speech model
+    ("asr", "model", "nemotron-en-160ms-int8", True),
+    ("asr", "threads", 2, True),
+    ("llm", "model", "qwen3.5-2b-q4km", True),
+    ("llm", "gpu", "auto", True),
+    ("dictionary", "words", ["Keynone"], True),  # part of the LLM's prompt
 ])
-def test_only_engine_settings_restart_a_loaded_engine(section: str, name: str, value: object,
-                                                       restart: bool) -> None:
+def test_only_what_the_engine_loads_restarts_it(section: str, name: str, value: object,
+                                                restart: bool) -> None:
     old = Config()
     new = Config()
     setattr(getattr(new, section), name, value)
-    assert engine_settings_changed(old, new) is restart
+    assert engine_restart_needed(old, new) is restart
     assert dataclasses.asdict(old) == dataclasses.asdict(Config())  # the input is untouched
+
+
+def test_turning_the_llm_on_restarts_an_engine_without_one() -> None:
+    old = Config()
+    old.cleanup.llm_mode, old.hotkeys.edit = "off", ""  # no LLM loaded
+    new = Config()
+    new.hotkeys.edit = ""
+    assert engine_restart_needed(old, new)
+    same_language_model = Config()
+    same_language_model.asr.language = "auto"
+    other = Config()
+    other.asr.language = "hi"  # the same multilingual model: no restart
+    assert not engine_restart_needed(same_language_model, other)
 
 
 # --------------------------------------------------------------------------- paste last
@@ -170,3 +196,63 @@ def test_the_engine_unloads_when_the_warm_period_ends(app: ListenerApp,
     app._next_warm_check = 0.0
     app._maybe_unload(now + 301)
     assert quit_called.wait(2)
+
+
+# --------------------------------------------------------------------------- quick toggles
+
+
+def _entries(items: list[object]) -> dict[str, object]:
+    from keynone.win32.gui import MenuEntry
+
+    return {item.label: item for item in items if isinstance(item, MenuEntry)}
+
+
+def test_tray_quick_toggles_change_config_toml(app: ListenerApp,
+                                               monkeypatch: pytest.MonkeyPatch) -> None:
+    from keynone.win32.gui import MenuEntry
+
+    monkeypatch.setattr("keynone.listener.main.input_devices",
+                        lambda: ["Microphone (Realtek Audio)", "Headset (USB Audio)"])
+    entries = _entries(app._menu())
+    punctuation = entries["Spoken punctuation"]
+    assert isinstance(punctuation, MenuEntry) and punctuation.checked
+    assert punctuation.action is not None
+    punctuation.action()
+    app._housekeeping()  # applied at once (the listener is idle)
+    assert app.config.cleanup.spoken_punctuation is False
+    text = app.paths.config_file.read_text(encoding="utf-8")
+    assert "spoken_punctuation = false" in text and "# Spoken" in text  # comments stay
+    assert not _entries(app._menu())["Spoken punctuation"].checked  # type: ignore[attr-defined]
+
+    microphone = _entries(app._menu())["Microphone"]
+    assert isinstance(microphone, MenuEntry)
+    choices = {e.label: e for e in microphone.submenu}
+    assert choices["Windows default"].checked and choices["Windows default"].radio
+    action = choices["Headset (USB Audio)"].action
+    assert action is not None
+    action()
+    app._housekeeping()
+    assert app.config.audio.device == "Headset (USB Audio)"
+    assert "Language" not in _entries(app._menu())  # only with the language pack
+
+
+def test_polish_toggle_remembers_the_mode(app: ListenerApp) -> None:
+    app._set_setting("cleanup.llm_mode", "always")
+    app._housekeeping()
+    app._polish_mode = "always"
+    app._toggle_polish()
+    app._housekeeping()
+    assert app.config.cleanup.llm_mode == "off"
+    app._toggle_polish()
+    app._housekeeping()
+    assert app.config.cleanup.llm_mode == "always"
+
+
+def test_a_broken_file_is_not_overwritten_by_a_toggle(app: ListenerApp) -> None:
+    balloons: list[str] = []
+    app.tray.balloon = lambda title, text, warning=False: balloons.append(text)  # type: ignore[method-assign]
+    path = app.paths.config_file
+    path.write_text(path.read_text(encoding="utf-8") + "\n[broken", encoding="utf-8")
+    app._set_setting("audio.cues", False)
+    assert balloons and "Couldn't change it" in balloons[0]
+    assert path.read_text(encoding="utf-8").endswith("[broken")

@@ -40,6 +40,8 @@ Notable changes to Keynone. The format follows
   to 30 minutes after your last dictation), so the next one starts at once; it
   still unloads when you step away or battery saver is on
   (`lifecycle.smart_warm`, Settings → General).
+- **Quick toggles in the tray menu:** AI polish, spoken punctuation, sounds, the
+  live overlay, the microphone, and the language (with the language pack).
 - **Home page** in the settings window: whether Keynone is running, your
   shortcuts, and your statistics: words dictated, time saved compared with
   typing, speaking speed, and the last two weeks at a glance. Counts only, kept
@@ -50,6 +52,9 @@ Notable changes to Keynone. The format follows
 - Terminals no longer turn the local AI off: prompts dictated to Claude Code or
   Codex get the same cleanup as everywhere else. Commands are still typed as said.
 - Code editors use the prompt style instead of the code style.
+- Saving a setting no longer restarts a loaded engine unless it is about the
+  models (speech model, language model, the dictionary's words): the next
+  dictation starts at once and simply uses the new setting.
 
 ## [0.2.0] - 2026-10-07
 
