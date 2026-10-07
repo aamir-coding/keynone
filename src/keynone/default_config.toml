@@ -124,9 +124,12 @@ words = []
 
 # Per-app behaviour. The first profile whose `match` (process name) or
 # `title_match` (window-title substring) matches the active window wins.
-# Built-in profiles for chat apps, e-mail and code editors/terminals apply
-# after yours. Fields: style ("default" | "chat" | "email" | "code"), method,
-# paste_keys, copy_keys, trailing_space, llm_mode, drop_final_period.
+# Built-in profiles for chat apps, e-mail, terminals, code editors and AI apps apply
+# after yours. Fields: style ("default" | "chat" | "email" | "prompt" | "code"),
+# method, paste_keys, copy_keys, trailing_space, llm_mode, drop_final_period.
+# "prompt" (terminals, editors, AI apps): sentences as prose, commands as you said
+# them, "camel case user name" -> userName, "at main dot py" -> @main.py.
+# "code": everything as you said it.
 #
 # [[apps]]
 # name = "my-terminal"

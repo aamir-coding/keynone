@@ -546,7 +546,7 @@ class ReplacementsControl(Control):
 # --------------------------------------------------------------------------- app profiles
 
 _STYLES = (Option("default", "Default"), Option("chat", "Chat"), Option("email", "Email"),
-           Option("code", "Code"))
+           Option("prompt", "Prompt"), Option("code", "Code"))
 _OVERRIDES: tuple[tuple[str, str, tuple[Option, ...]], ...] = (
     ("method", "Insert by", (Option(None, "Default"), Option("paste", "Pasting"),
                              Option("type", "Typing"))),
