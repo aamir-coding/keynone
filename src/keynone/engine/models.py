@@ -143,6 +143,7 @@ class EngineModels:
                 polisher.warm_up_generation()  # compile GPU decode kernels now, not mid-dictation
             if self.config.hotkeys.edit:
                 polisher.prime_rewrite()  # speak-to-edit's instructions, evaluated once
+            polisher.prune_slot_files()  # caches of old prompts/dictionaries/models
             self.polisher = polisher
             log.info("LLM ready in %.2fs (%s)", time.perf_counter() - started,
                      polisher.server.gpu_device or "CPU")

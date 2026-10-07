@@ -18,6 +18,7 @@ import hashlib
 import http.client
 import json
 import logging
+import os
 import re
 import secrets
 import socket
@@ -302,6 +303,10 @@ class LlamaServer:
 
 
 CLEANUP_SLOT, REWRITE_SLOT = 0, 1
+# Saved prompt caches (data/cache/llm-slots): every change of model, prompt or
+# dictionary words saves a new 3-25 MB file. Keep the recently used ones only.
+SLOT_KEEP_DAYS = 14
+SLOT_KEEP_FILES = 8
 
 
 class LlmPolisher:
@@ -334,6 +339,40 @@ class LlmPolisher:
                     f"{self.server.gpu_device}|{builder.prefix()}")
         return f"prefix-{hashlib.sha256(identity.encode()).hexdigest()[:16]}.bin"
 
+    def _touch(self, name: str) -> None:
+        """Mark a saved prompt cache as used (pruning goes by the file's time)."""
+        if self.server.slot_dir:
+            with contextlib.suppress(OSError):
+                os.utime(self.server.slot_dir / name)
+
+    def prune_slot_files(self, *, keep_days: float = SLOT_KEEP_DAYS,
+                         keep_files: int = SLOT_KEEP_FILES) -> int:
+        """Delete saved prompt caches unused for ``keep_days``, and any beyond the
+        ``keep_files`` most recently used; never the ones loaded now. A deleted cache
+        costs one prompt evaluation the next time it is needed, nothing else."""
+        directory = self.server.slot_dir
+        if directory is None or not directory.is_dir():
+            return 0
+        in_use = {self._loaded_prefix, self._rewrite_prefix_name()}
+        files: list[tuple[float, Path]] = []
+        for path in directory.glob("*.bin"):
+            if path.name.startswith(("prefix-", "rewrite-")) and path.name not in in_use:
+                with contextlib.suppress(OSError):
+                    files.append((path.stat().st_mtime, path))
+        files.sort(reverse=True)  # most recently used first
+        cutoff = time.time() - keep_days * 86_400
+        keep = keep_files - len(in_use - {None})
+        deleted = 0
+        for index, (used, path) in enumerate(files):
+            if index < keep and used >= cutoff:
+                continue
+            with contextlib.suppress(OSError):
+                path.unlink()
+                deleted += 1
+        if deleted:
+            log.info("deleted %d unused prompt cache file(s)", deleted)
+        return deleted
+
     def _load_prefix_locked(self, builder: PromptBuilder) -> None:
         name = self._prefix_name(builder)
         if self._loaded_prefix == name and not self._use_slot_restore:
@@ -341,6 +380,8 @@ class LlmPolisher:
         restored = False
         if self.server.slot_dir and (self.server.slot_dir / name).is_file():
             restored = self.server.slot_action("restore", name, CLEANUP_SLOT)
+            if restored:
+                self._touch(name)
         if not restored:
             self.server.complete(builder.prefix(), max_tokens=0, stop=[], slot=CLEANUP_SLOT)
             if self.server.slot_dir:
@@ -406,6 +447,7 @@ class LlmPolisher:
         name = self._rewrite_prefix_name()
         if (self.server.slot_dir / name).is_file() and self.server.slot_action(
                 "restore", name, REWRITE_SLOT):
+            self._touch(name)
             return
         self.server.complete(rewrite_prefix(), max_tokens=0, stop=[], slot=REWRITE_SLOT)
         self.server.slot_action("save", name, REWRITE_SLOT)

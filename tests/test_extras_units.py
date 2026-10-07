@@ -109,6 +109,9 @@ def test_llm_falls_back_to_cpu_when_the_gpu_server_fails(monkeypatch) -> None:
         def prime_rewrite(self) -> None:
             pass
 
+        def prune_slot_files(self) -> int:
+            return 0
+
     def fake_launch(gpu: str) -> FakePolisher:
         launched.append(gpu)
         if gpu != "off":
