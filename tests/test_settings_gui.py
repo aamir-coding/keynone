@@ -12,6 +12,7 @@ import time
 import tkinter as tk
 from collections.abc import Iterator
 from pathlib import Path
+from tkinter import ttk
 from types import SimpleNamespace
 from typing import Any
 
@@ -88,6 +89,9 @@ class FakeSystem(System):
 
     def run_in_terminal(self, *args: str) -> None:
         self.calls.append(("terminal", *args))
+
+    def copy_text(self, text: str) -> None:
+        self.calls.append(("copy", text))
 
 
 @pytest.fixture(scope="module")
@@ -426,3 +430,62 @@ def test_snippets_page(root: tk.Tk, paths: Paths) -> None:
     control.cards[-1].text.delete("1.0", "end")
     control.cards[-1]._modified()
     assert "no text" in app.problems["snippets"]
+
+
+def test_history_page(root: tk.Tk, paths: Paths, monkeypatch: pytest.MonkeyPatch) -> None:
+    from keynone.engine.history import History
+
+    app, system = _app(root, paths)
+    app.show_section("history")
+    view = app.history
+    assert view is not None
+    assert not paths.history_db.exists()  # the page never creates the history
+    assert "No dictations yet" in _texts(view.list)
+
+    history = History(paths.history_db)
+    for text in ("Meet at four.", "Send the report.", "Buy milk."):
+        history.add(app="notepad.exe", title="", raw_text=text, final_text=text,
+                    audio_seconds=1.5, latency_ms=200, llm_calls=0, method="paste")
+    history.close()
+    view.poll()  # a dictation made meanwhile shows up
+    assert _texts(view.list).count("notepad") == 3
+    assert _texts(view.list).index("Buy milk.") < _texts(view.list).index("Meet at four.")
+
+    view.query.set("report")
+    view.refresh()
+    assert "Send the report." in _texts(view.list) and "Buy milk." not in _texts(view.list)
+    _button(view.list, "Copy").invoke()
+    assert ("copy", "Send the report.") in system.calls
+    _button(view.list, "Delete").invoke()
+    assert "No dictations contain" in _texts(view.list)
+
+    view.query.set("")
+    view.refresh()
+    monkeypatch.setattr("tkinter.messagebox.askyesno", lambda *a, **k: True)
+    view.clear()
+    assert "No dictations yet" in _texts(view.list)
+    view.close()
+
+    app.model.set("history.enabled", False)
+    view.refresh()
+    assert "history is off" in _texts(view.list)
+
+
+def _texts(widget: tk.Misc) -> str:
+    """Every label's text inside ``widget``, joined (for assertions)."""
+    out = []
+    for child in widget.winfo_children():
+        if isinstance(child, ttk.Label):
+            out.append(str(child.cget("text")))
+        out.append(_texts(child))
+    return " ".join(t for t in out if t)
+
+
+def _button(widget: tk.Misc, text: str) -> ttk.Button:
+    for child in widget.winfo_children():
+        if isinstance(child, ttk.Button) and child.cget("text") == text:
+            return child
+        found = _button(child, text) if child.winfo_children() else None
+        if found is not None:
+            return found
+    return None  # type: ignore[return-value]

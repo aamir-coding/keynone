@@ -99,3 +99,56 @@ def test_only_engine_settings_restart_a_loaded_engine(section: str, name: str, v
     setattr(getattr(new, section), name, value)
     assert engine_settings_changed(old, new) is restart
     assert dataclasses.asdict(old) == dataclasses.asdict(Config())  # the input is untouched
+
+
+# --------------------------------------------------------------------------- paste last
+
+
+def _paste_with_fakes(app: ListenerApp, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    from keynone.engine.inject import InsertResult
+    from keynone.win32.windows import WindowInfo
+
+    inserted: list[str] = []
+
+    class FakeInserter:
+        def __init__(self, config: object) -> None:
+            pass
+
+        def insert(self, text: str, profile: object, target: object) -> InsertResult:
+            inserted.append(text)
+            return InsertResult("paste", True)
+
+    monkeypatch.setattr("keynone.engine.inject.Inserter", FakeInserter)
+    monkeypatch.setattr("keynone.win32.windows.window_info", lambda hwnd=None: WindowInfo(
+        1, 1, "notepad.exe", "Untitled - Notepad", "Notepad", "Edit", False))
+    app.cues.enabled = False
+    return inserted
+
+
+def test_paste_last_pastes_the_newest_dictation(app: ListenerApp,
+                                                monkeypatch: pytest.MonkeyPatch) -> None:
+    from keynone.engine.history import History
+    from keynone.listener.hotkeys import Action
+
+    history = History(app.paths.history_db)
+    for text in (" First one. ", " Hello there. "):
+        history.add(app="notepad.exe", title="", raw_text=text, final_text=text,
+                    audio_seconds=1.0, latency_ms=100, llm_calls=0, method="paste")
+    history.close()
+    inserted = _paste_with_fakes(app, monkeypatch)
+    app._handle(Action.PASTE_LAST)
+    assert inserted == ["Hello there. "]
+
+
+def test_paste_last_says_why_it_has_nothing(app: ListenerApp,
+                                            monkeypatch: pytest.MonkeyPatch) -> None:
+    from keynone.listener.hotkeys import Action
+
+    inserted = _paste_with_fakes(app, monkeypatch)
+    balloons: list[str] = []
+    app.tray.balloon = lambda title, text, warning=False: balloons.append(text)  # type: ignore[method-assign]
+    app._handle(Action.PASTE_LAST)
+    assert inserted == [] and "No dictations yet" in balloons[-1]
+    app.config.history.enabled = False
+    app._handle(Action.PASTE_LAST)
+    assert inserted == [] and "history is off" in balloons[-1]

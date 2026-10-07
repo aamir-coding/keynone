@@ -66,16 +66,62 @@ class History:
             )
             self._db.commit()
 
-    def recent(self, limit: int = 20) -> list[Dictation]:
+    @staticmethod
+    def _where(query: str) -> tuple[str, tuple[str, ...]]:
+        """SQL filter for dictations whose text contains ``query`` (any case)."""
+        if not query.strip():
+            return "", ()
+        escaped = query.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        return " WHERE final_text LIKE ? ESCAPE '\\'", (f"%{escaped}%",)
+
+    def recent(self, limit: int = 20, offset: int = 0, query: str = "") -> list[Dictation]:
+        """The newest dictations first; ``query`` keeps those whose text contains it."""
         if self._db is None:
             return []
+        where, args = self._where(query)
         with self._lock:
             rows = self._db.execute(
                 "SELECT id, created_at, app, raw_text, final_text, audio_seconds, latency_ms, "
-                "method FROM dictations ORDER BY id DESC LIMIT ?",
-                (limit,),
+                f"method FROM dictations{where} ORDER BY id DESC LIMIT ? OFFSET ?",
+                (*args, limit, offset),
             ).fetchall()
         return [Dictation(*row) for row in rows]
+
+    def count(self, query: str = "") -> int:
+        if self._db is None:
+            return 0
+        where, args = self._where(query)
+        with self._lock:
+            row = self._db.execute(f"SELECT COUNT(*) FROM dictations{where}", args).fetchone()
+        return int(row[0])
+
+    def last(self) -> Dictation | None:
+        recent = self.recent(1)
+        return recent[0] if recent else None
+
+    def latest_id(self) -> int:
+        """Changes whenever a dictation is added (cheap to ask often)."""
+        if self._db is None:
+            return 0
+        with self._lock:
+            row = self._db.execute("SELECT MAX(id) FROM dictations").fetchone()
+        return int(row[0] or 0)
+
+    def delete(self, dictation_id: int) -> None:
+        if self._db is None:
+            return
+        with self._lock:
+            self._db.execute("DELETE FROM dictations WHERE id = ?", (dictation_id,))
+            self._db.commit()
+
+    def clear(self) -> None:
+        """Delete every dictation (and shrink the file)."""
+        if self._db is None:
+            return
+        with self._lock:
+            self._db.execute("DELETE FROM dictations")
+            self._db.commit()
+            self._db.execute("VACUUM")
 
     def close(self) -> None:
         if self._db is not None:

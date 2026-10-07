@@ -27,6 +27,11 @@ Notable changes to Keynone. The format follows
   insert my email"); the text goes in exactly as written, several lines too.
   Settings → Snippets, or `[snippets]` in config.toml.
 
+- **History page** in the settings window: search your past dictations, copy
+  one to use it again, delete one or clear them all.
+- **Paste last dictation:** Alt+Shift+V pastes your last dictation again, for
+  when it went into the wrong window (`hotkeys.paste_last`, Settings → General).
+
 ### Changed
 
 - Terminals no longer turn the local AI off: prompts dictated to Claude Code or

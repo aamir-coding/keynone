@@ -52,6 +52,7 @@ class Section:
 _HOTKEY_PRESETS = tuple(Option(v, v) for v in (
     "ctrl+win", "rctrl", "capslock", "f9", "ctrl+alt+space", "ctrl+shift+d"))
 _EDIT_PRESETS = tuple(Option(v, v) for v in ("ctrl+win+alt", "ctrl+alt+e", "rctrl+rshift", ""))
+_PASTE_PRESETS = tuple(Option(v, v) for v in ("alt+shift+v", "ctrl+alt+v", "f8", ""))
 _LLM_MODES = (
     Option("auto", "When needed (recommended)"),
     Option("always", "Every dictation"),
@@ -74,6 +75,9 @@ SECTIONS: tuple[Section, ...] = (
                   "speak-to-edit off.", "hotkey", _EDIT_PRESETS),
             Field("hotkeys.cancel", "Cancel key", "Discards the dictation in progress.",
                   "hotkey", (Option("esc", "esc"),)),
+            Field("hotkeys.paste_last", "Paste last dictation",
+                  "Pastes your last dictation again, for when it went into the wrong window. "
+                  "Leave empty to turn it off.", "hotkey", _PASTE_PRESETS),
             Field("lifecycle.keep_warm_seconds", "Keep the engine loaded for",
                   "After a dictation the engine stays in memory (idle, about 2 GB) so the "
                   "next one starts at once. 0 unloads it right away: nothing heavy keeps "
