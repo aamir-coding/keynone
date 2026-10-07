@@ -333,6 +333,7 @@ AppendMenuW = _fn(user32, "AppendMenuW", wintypes.BOOL, wintypes.HMENU, U, UINT_
 TrackPopupMenu = _fn(user32, "TrackPopupMenu", wintypes.BOOL, wintypes.HMENU, U, I, I, I, H,
                      ctypes.POINTER(wintypes.RECT))
 DestroyMenu = _fn(user32, "DestroyMenu", wintypes.BOOL, wintypes.HMENU)
+CheckMenuRadioItem = _fn(user32, "CheckMenuRadioItem", wintypes.BOOL, wintypes.HMENU, U, U, U, U)
 GetCursorPos = _fn(user32, "GetCursorPos", wintypes.BOOL, ctypes.POINTER(wintypes.POINT))
 SetForegroundWindow = _fn(user32, "SetForegroundWindow", wintypes.BOOL, H)
 RegisterWindowMessageW = _fn(user32, "RegisterWindowMessageW", U, wintypes.LPCWSTR)

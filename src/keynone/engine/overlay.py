@@ -21,6 +21,7 @@ log = logging.getLogger(__name__)
 WM_OVERLAY_UPDATE = api.WM_APP + 10
 WM_OVERLAY_SHOW = api.WM_APP + 11
 WM_OVERLAY_HIDE = api.WM_APP + 12
+WM_OVERLAY_ALPHA = api.WM_APP + 13
 _HIDE_TIMER = 1
 
 _BG = api.rgb(30, 31, 36)
@@ -84,10 +85,26 @@ class Overlay(Window):
             api.DeleteObject(font)
 
     def close(self) -> None:
-        if self.enabled and self.hwnd:
+        if self.hwnd:
             self.post(api.WM_CLOSE)
             if self._thread:
                 self._thread.join(timeout=2)
+
+    def configure(self, *, enabled: bool, opacity: float, position: str) -> None:
+        """New settings, applied between dictations (no restart)."""
+        self._position = position
+        alpha = max(50, min(255, int(opacity * 255)))
+        if enabled and self._thread is None:  # it was off when the engine started
+            self._alpha = alpha
+            self.enabled = True
+            self.start()
+            return
+        if not enabled and self.enabled and self.hwnd:
+            self.post(WM_OVERLAY_HIDE, 0)
+        self.enabled = enabled and bool(self.hwnd)
+        if alpha != self._alpha and self.hwnd:
+            self._alpha = alpha
+            self.post(WM_OVERLAY_ALPHA, alpha)
 
     # ----------------------------------------------------------------- public API (any thread)
 
@@ -158,6 +175,9 @@ class Overlay(Window):
                 api.SetTimer(self.hwnd, _HIDE_TIMER, wparam, None)
             else:
                 api.ShowWindow(self.hwnd, api.SW_HIDE)
+            return 0
+        if msg == WM_OVERLAY_ALPHA:
+            api.SetLayeredWindowAttributes(self.hwnd, 0, wparam, api.LWA_ALPHA)
             return 0
         if msg == api.WM_TIMER and wparam == _HIDE_TIMER:
             api.KillTimer(self.hwnd, _HIDE_TIMER)

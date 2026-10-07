@@ -8,8 +8,8 @@ down again after the configured warm period.
 
 from __future__ import annotations
 
-import copy
 import ctypes
+import functools
 import logging
 import os
 import queue
@@ -23,6 +23,7 @@ from typing import Any
 from keynone.assets import get_asset
 from keynone.cleanup.llm import LLAMA_RUNTIME_ID
 from keynone.config import Config, ConfigError, config_mtime, load_config
+from keynone.editions import MULTILINGUAL_MODEL, language_pack_installed
 from keynone.ipc import Msg
 from keynone.listener import control
 from keynone.listener.engine_proc import EngineProcess
@@ -32,8 +33,15 @@ from keynone.logging_setup import setup_logging
 from keynone.paths import Paths, get_paths
 from keynone.sounds import Cues
 from keynone.win32 import api, clipboard
-from keynone.win32.audio import AudioCapture, AudioError
-from keynone.win32.gui import BRAND_RGB, MenuItem, TrayIcon, run_message_loop, write_icon
+from keynone.win32.audio import AudioCapture, AudioError, input_devices
+from keynone.win32.gui import (
+    BRAND_RGB,
+    MenuEntry,
+    MenuItem,
+    TrayIcon,
+    run_message_loop,
+    write_icon,
+)
 from keynone.win32.hooks import KeyboardHook
 from keynone.win32.keys import Chord, send_menu_mask
 from keynone.win32.process import KillOnCloseJob
@@ -45,25 +53,29 @@ CONFIG_POLL_SECONDS = 1.0  # how often an idle listener looks at config.toml's t
 FINISH_GRACE_SECONDS = 60.0  # a released dictation is surely finished (or stuck) after this
 _REC_COLOR = (229, 72, 77)
 
-# Settings only the listener uses: changing them never restarts a loaded engine.
-_LISTENER_ONLY = {
-    "hotkeys": ("dictate", "cancel", "paste_last", "hold_threshold_ms", "double_tap_ms"),
-    "lifecycle": ("keep_warm_seconds", "smart_warm"),
-    "audio": ("cues", "device", "max_session_seconds"),
-}
+def _speech_model(config: Config) -> str:
+    """The speech model the engine loads (keynone.asr.effective_model, without numpy)."""
+    english = config.asr.language.split("-")[0].lower() == "en"
+    return config.asr.model if english or config.asr.model == MULTILINGUAL_MODEL else (
+        MULTILINGUAL_MODEL)
 
 
-def engine_settings_changed(old: Config, new: Config) -> bool:
-    """Whether a running engine must restart to use ``new`` (it reads the config once)."""
+def _llm_needed(config: Config) -> bool:
+    return config.cleanup.llm_mode != "off" or bool(config.hotkeys.edit)
 
-    def engine_part(config: Config) -> Config:
-        part = copy.deepcopy(config)
-        for section, names in _LISTENER_ONLY.items():
-            for name in names:
-                setattr(getattr(part, section), name, None)
-        return part
 
-    return engine_part(old) != engine_part(new)
+def engine_restart_needed(old: Config, new: Config) -> bool:
+    """Whether a loaded engine must restart for ``new``: only for what it loads at
+    start - the speech model and the language model with its prompt (the dictionary's
+    words are in it). Everything else it reads again when a dictation starts."""
+
+    def loaded(config: Config) -> tuple[object, ...]:
+        asr, llm = config.asr, config.llm
+        return (asr.model, _speech_model(config), asr.threads, asr.endpoint_silence_seconds,
+                llm.model, llm.threads, llm.context, llm.gpu, llm.gpu_layers,
+                tuple(config.dictionary.words))
+
+    return loaded(old) != loaded(new) or (_llm_needed(new) and not _llm_needed(old))
 
 
 def launch_settings_window(paths: Paths) -> None:
@@ -120,6 +132,9 @@ class ListenerApp:
         self.warm = WarmPolicy(self.config.lifecycle.keep_warm_seconds,
                                self.config.lifecycle.smart_warm)
         self._next_warm_check = 0.0
+        # What "Polish with the local AI" in the tray turns back on.
+        self._polish_mode = (self.config.cleanup.llm_mode
+                             if self.config.cleanup.llm_mode != "off" else "auto")
         self._running = True
         self._main_thread = 0
         self._user_paused = False  # "Pause hotkey" in the tray menu
@@ -170,7 +185,7 @@ class ListenerApp:
         self.warm.keep_warm = config.lifecycle.keep_warm_seconds
         self.warm.smart = config.lifecycle.smart_warm
         self.tray.set_tooltip(self._tooltip())
-        if engine_settings_changed(old, config):
+        if engine_restart_needed(old, config):
             self.engine.quit()  # the next dictation starts an engine with the new settings
         log.info("configuration reloaded")
 
@@ -423,6 +438,9 @@ class ListenerApp:
             *items,
             ("-", None),
             ("Copy last dictation", self._copy_last),
+            ("-", None),
+            *self._quick_toggles(),
+            ("-", None),
             ("Settings...", lambda: launch_settings_window(self.paths)),
             ("Edit config.toml", lambda: os.startfile(self.paths.config_file)),
             ("Open data folder", lambda: os.startfile(self.paths.data)),
@@ -430,6 +448,77 @@ class ListenerApp:
             ("Resume hotkey" if paused else "Pause hotkey", self._toggle_pause),
             ("Quit Keynone", self.quit),
         ]
+
+    # ----------------------------------------------------------------- quick toggles
+
+    def _quick_toggles(self) -> list[MenuItem]:
+        """Settings worth changing in passing (written to config.toml, like the window)."""
+        cfg = self.config
+
+        def switch(label: str, key: str, on: bool) -> MenuEntry:
+            return MenuEntry(label, lambda: self._set_setting(key, not on), checked=on)
+
+        toggles: list[MenuItem] = [
+            MenuEntry("Polish with the local AI", self._toggle_polish,
+                      checked=cfg.cleanup.llm_mode != "off"),
+            switch("Spoken punctuation", "cleanup.spoken_punctuation",
+                   cfg.cleanup.spoken_punctuation),
+            switch("Start and stop sounds", "audio.cues", cfg.audio.cues),
+            switch("Live overlay", "overlay.enabled", cfg.overlay.enabled),
+            MenuEntry("Microphone", submenu=self._microphones()),
+        ]
+        if language_pack_installed(self.paths):
+            toggles.append(MenuEntry("Language", submenu=self._languages()))
+        return toggles
+
+    def _microphones(self) -> tuple[MenuEntry, ...]:
+        current = self.config.audio.device
+        try:
+            names = input_devices()
+        except OSError:
+            names = []
+        # The setting is part of a name: mark the device it picks (the first match).
+        chosen = next((n for n in names if current and current.lower() in n.lower()), "")
+        entries = [MenuEntry("Windows default", lambda: self._set_setting("audio.device", ""),
+                             checked=not current, radio=True)]
+        entries += [MenuEntry(name, functools.partial(self._set_setting, "audio.device", name),
+                              checked=name == chosen, radio=True) for name in names]
+        return tuple(entries)
+
+    def _languages(self) -> tuple[MenuEntry, ...]:
+        from keynone.cleanup.language import LANGUAGE_NAMES
+
+        current = self.config.asr.language
+        options = [("en", "English"), ("auto", "Detect the language")]
+        if current not in ("en", "auto"):
+            options.append((current, LANGUAGE_NAMES.get(current.split("-")[0], current)))
+        return tuple(MenuEntry(label, functools.partial(self._set_setting, "asr.language", code),
+                               checked=code == current, radio=True) for code, label in options)
+
+    def _toggle_polish(self) -> None:
+        mode = self.config.cleanup.llm_mode
+        if mode != "off":
+            self._polish_mode = mode  # "auto" or "always": restored when switched on again
+            self._set_setting("cleanup.llm_mode", "off")
+        else:
+            self._set_setting("cleanup.llm_mode", self._polish_mode)
+
+    def _set_setting(self, key: str, value: object) -> None:
+        """Change one setting in config.toml (comments kept); applied within a moment."""
+        from keynone.settings.model import SettingsModel  # lazy: tomlkit only when used
+
+        try:
+            model = SettingsModel(self.paths.config_file, self.paths.default_config)
+            if model.error is not None:
+                raise ConfigError(model.error)
+            model.set(key, value)
+            model.save()
+        except (ConfigError, OSError, KeyError, ValueError) as exc:
+            self.tray.balloon("Keynone settings error", f"Couldn't change it: {exc}"[:250],
+                              warning=True)
+            return
+        self._next_config_check = 0.0
+        self._work.put(("wake",))  # the worker reloads config.toml now (when idle)
 
     def _toggle_pause(self) -> None:
         self._user_paused = not self._user_paused
