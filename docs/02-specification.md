@@ -97,7 +97,7 @@ scope: mobile platforms, cloud sync.
 * **FR-51** Two editions are built from one codebase: **Keynone** (English speech model, LFM2.5 1.2B, llama.cpp CPU; ~1.4 GB of models) and **Keynone + languages** (the same plus the *language pack*, the multilingual speech model; ~2.0 GB). The language pack is what FR-39…FR-42 need; everything else, speak-to-edit included, is in both.
 * **FR-52** What an installation can do depends only on what is installed (`keynone.editions`): adding the pack (`keynone setup --edition languages`, or the settings window) turns a base install into the languages edition, removing it turns it back. A release download names its edition in `edition.txt`, which only decides what a plain `keynone setup` / `install.ps1` downloads (`-Edition` overrides it).
 * **FR-53** Without the pack, settings that need it fall back instead of failing: `asr.language` other than `en` → English model and language; `cleanup.translate_to` → off; a multilingual `asr.model` → the English model. Each fallback is logged, shown once per engine start in the tray, and reported by `keynone doctor`; the settings window disables those options and offers to add the pack.
-* **FR-54** Releases: a `vX.Y.Z` tag builds `keynone-X.Y.Z-windows.zip` and `keynone-X.Y.Z-windows-languages.zip` (identical files except `edition.txt`), `SHA256SUMS.txt` and release notes, reproducibly (sorted entries, commit date). Models are never inside a download: setup fetches them from their publishers and verifies the pinned SHA-256 digests. A newer zip can be extracted over an older install; `data/`, `models/` and `bin/` are kept.
+* **FR-54** Releases: a `vX.Y.Z` tag builds `keynone-X.Y.Z-windows.zip` and `keynone-X.Y.Z-windows-languages.zip` (identical files except `edition.txt`), `SHA256SUMS.txt` and release notes, reproducibly (sorted entries, commit date). The zips are the user version: tests, CI files and the stress-test data and scripts stay in the git repository, where `install.ps1 -Dev` sets up a development copy. Models are never inside a download: setup fetches them from their publishers and verifies the pinned SHA-256 digests. A newer zip can be extracted over an older install; `data/`, `models/` and `bin/` are kept.
 
 ## 2.4 Non-functional requirements
 
@@ -121,7 +121,7 @@ scope: mobile platforms, cloud sync.
 | NFR-16 | Cleanup quality on adversarial dictation | no regression | stress set: 343/343 punctuated (rules only); 94–98 % on real recognizer output (5 voices) |
 | NFR-17 | English dictation in both editions | identical | same code and models; the English path never consults the pack (`asr.language = "en"` fixes every sentence to English) |
 | NFR-18 | Settings window start-up | ≤ 2 s | window shown 1.2 s after launch; redraw of a page < 0.5 s |
-| NFR-19 | Download size | language features cost only those who use them | zips 0.25 MB each; models ~1.4 GB (base) vs ~2.0 GB (languages) |
+| NFR-19 | Disk space | language features cost only those who use them; nothing else stored | zips 0.26 MB each; after setup ~1.5 GB (base) vs ~2.2 GB (languages): models + Python 60 MB + packages 92 MB, no developer tools, download cache cleared, prompt caches bounded |
 
 ## 2.5 Architecture
 
@@ -171,7 +171,7 @@ overlay UI thread, model loaders. sherpa-onnx and llama.cpp release the GIL.
 | `edition.txt` | Only in release downloads: `base` or `languages` (what a plain setup downloads) |
 | `data/history.db` | `dictations(id, created_at, app, raw_text, final_text, audio_seconds, latency_ms, llm_calls, method)` |
 | `data/logs/` | Rotating logs; transcripts only if `privacy.log_transcripts = true` |
-| `data/cache/` | LLM prompt-prefix slot files, generated icons and sounds |
+| `data/cache/` | LLM prompt-prefix slot files (3-25 MB each; unused for 14 days → deleted, at most 8 kept), generated icons and sounds |
 
 The only optional exception is `keynone autostart enable` (Startup shortcut).
 

@@ -44,6 +44,7 @@ installer downloads, so you don't store a 651 MB speech model you never use:
 | Dictation in 40 other languages, language-aware cleanup | | ✓ |
 | Translating every dictation into another language | | ✓ |
 | Models downloaded during setup | ~1.4 GB | ~2.0 GB |
+| Disk space after setup (models, Python, app) | ~1.5 GB | ~2.2 GB |
 | Release file | `keynone-<version>-windows.zip` | `keynone-<version>-windows-languages.zip` |
 
 Not sure? Take **Keynone**. You can add the language pack at any time with
@@ -61,9 +62,11 @@ Extract the zip (or clone this repository), then run this in PowerShell, inside 
 powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
 ```
 
-The installer downloads the models of your edition. From a git clone, add
+The installer downloads the models of your edition and nothing else: no developer
+tools, and it clears its download cache when it's done. From a git clone, add
 `-Edition languages` to get the language pack too. To update later, extract a newer
-zip over the old folder: your settings, history and models stay.
+zip over the old folder and run the installer again: your settings, history and
+models stay.
 
 Then double-click **`Keynone.cmd`**. A microphone icon appears in the tray.
 
@@ -188,9 +191,11 @@ moment of inserting, and never stores them).
 
 ## Development
 
+From a git clone (the release zips leave the developer files out):
+
 ```bash
+powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -Dev   # + pytest, ruff, mypy
 . .\scripts\env.ps1                     # keeps uv caches/temp inside the folder
-uv sync                                 # the app plus the dev tools (pytest, ruff, mypy)
 uv run pytest                           # unit + integration tests (incl. the stress set)
 uv run ruff check src tests scripts && uv run mypy
 uv run python scripts/make_test_audio.py   # synthesized test dictations

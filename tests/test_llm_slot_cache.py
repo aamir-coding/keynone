@@ -6,8 +6,13 @@ import os
 import time
 from pathlib import Path
 
+import pytest
+
 from keynone.cleanup.llm import LlamaServer, LlmPolisher
 from keynone.cleanup.prompts import PromptBuilder
+from keynone.config import Config
+from keynone.engine.models import EngineModels
+from keynone.paths import Paths
 
 
 def _polisher(slot_dir: Path) -> LlmPolisher:
@@ -40,3 +45,26 @@ def test_old_and_surplus_caches_are_deleted(tmp_path: Path) -> None:
 
 def test_nothing_to_do_without_a_cache_folder(tmp_path: Path) -> None:
     assert _polisher(tmp_path / "missing").prune_slot_files() == 0
+
+
+def test_a_failing_cleanup_never_costs_the_llm(tmp_path: Path,
+                                               monkeypatch: pytest.MonkeyPatch) -> None:
+    class Server:
+        gpu_device = None
+
+    class Polisher:
+        server = Server()
+
+        def prime(self, *args: object) -> None:
+            pass
+
+        def prime_rewrite(self) -> None:
+            pass
+
+        def prune_slot_files(self) -> int:
+            raise PermissionError("the cache folder is read-only")
+
+    models = EngineModels(Config(), Paths(tmp_path), None)
+    monkeypatch.setattr(models, "_launch_llm", lambda gpu: Polisher())
+    models._start_llm()
+    assert models.polisher is not None and not models.errors

@@ -26,6 +26,7 @@ Notable changes to Keynone. The format follows
   (`audio.normalize_level`).
 - A 352-dictation stress test and its harness (`scripts/stress_test.py`).
 - MIT license, contributing guide, security policy, CI and release workflows.
+- `install.ps1 -Dev` sets up a development copy (adds pytest, ruff and mypy).
 
 ### Changed
 
@@ -37,7 +38,12 @@ Notable changes to Keynone. The format follows
   with the old hotkey first.
 - `keynone setup` installs the edition of the download; `--list` shows both editions.
 - Tray menu: *Settings...* and *Edit config.toml* replace *Open settings*.
-- `install.ps1` no longer installs the developer tools (pytest, ruff, mypy).
+- Smaller installs: `install.ps1` no longer installs the developer tools (pytest,
+  ruff, mypy), clears its download cache when done, and stops a running Keynone
+  before updating. The release downloads leave out the tests and the stress-test
+  data and scripts.
+- Saved prompt caches of the language model (`data/cache/llm-slots`, 3-25 MB each)
+  no longer pile up: ones unused for 14 days are deleted, and at most 8 are kept.
 
 ### Fixed
 

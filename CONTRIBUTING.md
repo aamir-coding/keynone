@@ -7,17 +7,24 @@ welcome.
 
 ## Set up
 
-You need Windows 10/11 and [uv](https://docs.astral.sh/uv/).
+You need Windows 10/11, git and [uv](https://docs.astral.sh/uv/). Work from a git
+clone: the release zips are the *user* version and leave out the tests, the
+stress-test data and the developer scripts.
 
 ```bash
 git clone <your fork> keynone && cd keynone
-. .\scripts\env.ps1                 # every uv/pip/Hugging Face cache stays in this folder
-uv python install 3.12.13 --no-bin --no-registry
-uv sync                             # includes the dev tools (pytest, ruff, mypy)
-uv run keynone setup                # the models (~1.4 GB); --edition languages for the pack
+powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -Dev
 ```
 
-Dot-source `scripts\env.ps1` in every new terminal before running `uv`.
+`-Dev` installs Python, the app and the developer tools (pytest, ruff, mypy) and
+keeps uv's download cache; it also downloads the models (~1.4 GB; add
+`-Edition languages` for the language pack). Afterwards, dot-source
+`scripts\env.ps1` in every new terminal before running `uv`, so every cache stays
+inside the folder:
+
+```bash
+. .\scripts\env.ps1
+```
 
 ## Before you open a pull request
 

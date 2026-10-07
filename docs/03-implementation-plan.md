@@ -83,6 +83,7 @@ If your accent or vocabulary trips the recognizer, add names/terms to
 | Stress (adversarial) | 352 dictations × 4 recognizer styles, rules only and with the LLM; the same cases spoken by 5 voices through the real recognizer; 24 speak-to-edit instructions. The rules-only part runs in every `pytest` | `tests/test_dictation_stress.py`, `scripts/stress_test.py` (doc 01 §1.7) |
 | Microphone level | Level normalizer: normal and moderately quiet speech untouched, quiet speech lifted, silence and sudden loud speech not pumped | `tests/test_audio_level.py` |
 | Settings | Every option in the window; edits keep comments and unknown keys; merge with outside edits; broken files; shortcut rules and recording; the window driven like a user (never shown); the listener applying saved settings only when idle | `tests/test_settings_*.py`, `tests/test_listener_reload.py` |
+| Editions & disk | Edition detection and the fallback without the language pack; old prompt caches deleted, the ones in use kept | `tests/test_editions.py`, `tests/test_llm_slot_cache.py` |
 | End-to-end | Synthesized speech, real-time playback, live-lag + latency metrics | `scripts/make_test_audio.py` + `keynone transcribe --realtime` |
 
 Rule for changes: every bug found end-to-end gets a regression test

@@ -7,11 +7,12 @@
     dist/SHA256SUMS.txt
     dist/release-notes.md                          downloads table + CHANGELOG section
 
-Both zips hold the same program: the files git tracks, minus the tests and CI
-configuration. Only ``edition.txt`` differs, and it only decides which models
-``scripts/install.ps1`` downloads (see ``keynone.editions``). Models are never
-inside a zip: setup downloads them from their publishers and checks each file
-against a pinned SHA-256 digest.
+Both zips hold the same program: the files git tracks, minus what is only for
+developing Keynone (tests, CI configuration, the stress-test data and scripts;
+contributors use the git repository). Only ``edition.txt`` differs, and it only
+decides which models ``scripts/install.ps1`` downloads (see ``keynone.editions``).
+Models are never inside a zip: setup downloads them from their publishers and
+checks each file against a pinned SHA-256 digest.
 
 Everything sits in a top-level ``keynone/`` folder, so a newer zip can be
 extracted over an older one: settings, history and models stay (they live in
@@ -40,7 +41,15 @@ from keynone import __version__  # noqa: E402
 from keynone.editions import EDITION_FILE, EDITIONS  # noqa: E402
 
 EXCLUDED_PREFIXES = ("tests/", ".github/")
-EXCLUDED_FILES = {".gitignore", ".gitattributes", EDITION_FILE}
+EXCLUDED_FILES = {
+    ".gitignore", ".gitattributes", EDITION_FILE,
+    # For working on Keynone, not for using it: they stay in the git repository.
+    "scripts/build_release.py", "scripts/make_test_audio.py", "scripts/stress_test.py",
+    "scripts/tts_windows.ps1",
+    "src/keynone/evaldata/dictation_stress.jsonl",
+    "src/keynone/evaldata/dictation_stress_holdout.jsonl",
+    "src/keynone/evaldata/speak_to_edit_eval.jsonl",
+}
 TOP = "keynone"
 
 
