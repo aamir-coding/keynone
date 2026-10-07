@@ -31,9 +31,11 @@ from keynone.win32.keys import Chord, ChordError
 
 APPS_KEY = "apps"
 SNIPPETS_KEY = "snippets"
-HOTKEY_KEYS = ("hotkeys.dictate", "hotkeys.edit", "hotkeys.cancel", "insert.paste_keys",
-               "insert.copy_keys")
-_OPTIONAL_HOTKEYS = ("hotkeys.edit", "hotkeys.cancel")
+HOTKEY_KEYS = ("hotkeys.dictate", "hotkeys.edit", "hotkeys.cancel", "hotkeys.paste_last",
+               "insert.paste_keys", "insert.copy_keys")
+_OPTIONAL_HOTKEYS = ("hotkeys.edit", "hotkeys.cancel", "hotkeys.paste_last")
+# Shortcuts Keynone itself reacts to (the others are keys it sends to apps).
+_TRIGGERS = ("hotkeys.dictate", "hotkeys.edit", "hotkeys.paste_last")
 _TYPING_KEYS = frozenset("abcdefghijklmnopqrstuvwxyz0123456789") | {"space", "enter", "tab"}
 # Alone, these are the first key of countless shortcuts (Ctrl+C, Alt+Tab, Win+E ...).
 _SHORTCUT_MODIFIERS = frozenset({"ctrl", "lctrl", "shift", "lshift", "alt", "lalt", "win", "lwin"})
@@ -51,18 +53,21 @@ def hotkey_problem(key: str, text: str, values: dict[str, Any]) -> str | None:
     except ChordError as exc:
         message = str(exc).replace("hotkey", "shortcut")
         return message[:1].upper() + message[1:]
-    if key in ("hotkeys.dictate", "hotkeys.edit") and len(chord.names) == 1:
+    if key in _TRIGGERS and len(chord.names) == 1:
         if chord.names[0] in _TYPING_KEYS:
             return "You type with this key. Pick another one, or add Ctrl, Alt or Win."
         if chord.names[0] in _SHORTCUT_MODIFIERS:
             return "This key starts many shortcuts. Try rctrl, or combine it with another key."
-    if key in ("hotkeys.dictate", "hotkeys.edit"):
-        other = "hotkeys.edit" if key == "hotkeys.dictate" else "hotkeys.dictate"
-        try:
-            if values.get(other) and Chord.parse(values[other]) == chord:
-                return "Dictation and speak-to-edit need different shortcuts."
-        except ChordError:
-            pass
+    if key in _TRIGGERS:
+        for other in _TRIGGERS:
+            try:
+                if other != key and values.get(other) and set(
+                        Chord.parse(values[other]).names) == set(chord.names):
+                    if {key, other} == {"hotkeys.dictate", "hotkeys.edit"}:
+                        return "Dictation and speak-to-edit need different shortcuts."
+                    return "Pasting the last dictation needs a shortcut of its own."
+            except ChordError:
+                pass
     if key == "hotkeys.cancel":
         try:
             if any(Chord.parse(values[k]).involves(code)

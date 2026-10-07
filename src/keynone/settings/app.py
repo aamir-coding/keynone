@@ -21,6 +21,7 @@ from keynone.cleanup.language import LANGUAGE_NAMES
 from keynone.config import ConfigError
 from keynone.editions import LANGUAGES, MULTILINGUAL_MODEL
 from keynone.paths import Paths, get_paths
+from keynone.settings.history_view import HistoryView
 from keynone.settings.model import HOTKEY_KEYS, SettingsModel
 from keynone.settings.schema import SECTIONS, Field, Option, Section
 from keynone.settings.system import GPU_RUNTIME, System
@@ -110,6 +111,7 @@ class SettingsApp:
         self._status_job: str | None = None
         self._disk_notice_shown = False
         self._gpus: list[str] | None = None
+        self.history: HistoryView | None = None  # built when the page is first shown
         self._build_shell()
         self.show_section(SECTIONS[0].id)
         self._show_file_error()
@@ -148,7 +150,8 @@ class SettingsApp:
         nav.grid(row=1, column=0, sticky="we", pady=(px(6), 0))
         nav.columnconfigure(1, weight=1)
         for row, (section_id, title) in enumerate(
-                [(s.id, s.title) for s in SECTIONS] + [("about", "About")]):
+                [(s.id, s.title) for s in SECTIONS] + [("history", "History"),
+                                                       ("about", "About")]):
             self._nav_item(nav, row, section_id, title)
         bottom = tk.Frame(sidebar, background=p.sidebar)
         bottom.grid(row=3, column=0, sticky="we", padx=px(18), pady=(0, px(16)))
@@ -261,11 +264,16 @@ class SettingsApp:
             self.pages[self.section_id].frame.pack_forget()
         self.section_id = section_id
         if section_id not in self.pages:
-            self.pages[section_id] = (self._build_about() if section_id == "about"
+            builders: dict[str, Callable[[], _Page]] = {"about": self._build_about,
+                                                         "history": self._build_history}
+            builder = builders.get(section_id)
+            self.pages[section_id] = (builder() if builder is not None
                                       else self._build_section(self._section(section_id)))
         self.pages[section_id].frame.pack(fill="both", expand=True)
         self._paint_nav()
         self.scroll.to_top()
+        if section_id == "history" and self.history is not None:
+            self.history.refresh()
 
     @staticmethod
     def _section(section_id: str) -> Section:
@@ -434,6 +442,23 @@ class SettingsApp:
                     widget.grid()
                 else:
                     widget.grid_remove()
+
+    # ----------------------------------------------------------------- history
+
+    def _build_history(self) -> _Page:
+        page = self._page("History",
+                          "Your recent dictations. Copy one to use it again; the paste-last "
+                          "shortcut pastes the newest. How long they are kept is set in "
+                          "Display & privacy.")
+
+        def status(text: str) -> None:
+            self._status(text, "Error.TLabel" if text.startswith("Couldn't") else "Ok.TLabel", 4)
+
+        self.history = HistoryView(page.frame, theme=self.theme, system=self.system,
+                                   enabled=lambda: bool(self.model.get("history.enabled")),
+                                   show_privacy=lambda: self.show_section("privacy"),
+                                   status=status)
+        return page
 
     # ----------------------------------------------------------------- about
 
@@ -684,6 +709,8 @@ class SettingsApp:
                 self.save()
                 if self._changes():
                     return  # saving failed: the footer says why
+        if self.history is not None:
+            self.history.close()
         self.root.destroy()
 
     # ================================================================= the file on disk
@@ -701,6 +728,8 @@ class SettingsApp:
                     self._banner("config.toml was changed by another program. Saving merges "
                                  "your changes into it; Revert loads it as it is now.")
             self._update_sidebar()
+            if self.section_id == "history" and self.history is not None:
+                self.history.poll()  # a dictation made meanwhile shows up
         except Exception:
             log.exception("watching config.toml failed")
         self.root.after(1500, self._watch)

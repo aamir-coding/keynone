@@ -38,6 +38,8 @@ class HotkeyConfig:
     # Hold with text selected and say how to change it ("" disables speak-to-edit).
     edit: str = "ctrl+win+alt"
     cancel: str = "esc"
+    # Pastes the last dictation again ("" turns it off).
+    paste_last: str = "alt+shift+v"
     hold_threshold_ms: int = 300
     double_tap_ms: int = 400
 

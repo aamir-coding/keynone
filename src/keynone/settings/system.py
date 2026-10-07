@@ -102,6 +102,12 @@ class System:
     def open(self, path: Path) -> None:
         os.startfile(path)  # a local file or folder, in its default app
 
+    def copy_text(self, text: str) -> None:
+        """Put ``text`` on the clipboard (it stays there after the window closes)."""
+        from keynone.win32 import clipboard
+
+        clipboard.set_text(text, private=False)
+
     def run_in_terminal(self, *args: str) -> None:
         """Run ``keynone <args>`` in a new console window that stays open at the end."""
         exe = Path(sys.executable)
