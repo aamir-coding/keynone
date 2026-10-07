@@ -239,3 +239,56 @@ def test_a_corrected_name_is_learned(uia: UiaClient, control: str, tmp_path: obj
         store.close()
     finally:
         box.close()
+
+
+def test_paste_last_with_the_real_hotkey(tmp_path: object) -> None:
+    """A listener of its own (temporary folder) pastes its last dictation when
+    Alt+Shift+V goes through the real keyboard hook."""
+    import shutil
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    from keynone.engine.history import History
+    from keynone.listener import control
+    from keynone.paths import Paths
+
+    if control.is_running():
+        pytest.skip("a Keynone listener is running already")
+    paths = Paths(Path(str(tmp_path)))
+    paths.ensure()
+    shutil.copyfile(paths.default_config, paths.config_file)
+    history = History(paths.history_db)
+    history.add(app="notepad.exe", title="", raw_text="", final_text="Pasted again.",
+                audio_seconds=1.0, latency_ms=0, llm_calls=0, method="paste")
+    history.close()
+    listener = subprocess.Popen([sys.executable, "-m", "keynone", "listen"],
+                                env={**os.environ, "KEYNONE_HOME": str(paths.home)},
+                                creationflags=subprocess.CREATE_NO_WINDOW)
+    box = None
+    try:
+        deadline = time.monotonic() + 15
+        while not control.is_running() and time.monotonic() < deadline:
+            time.sleep(0.1)
+        assert control.is_running(), "the listener did not start"
+        box = _open("Text: ")
+        box.select(6, 6)
+        user32 = ctypes.windll.user32
+        for vk in (0x12, 0x10, 0x56):  # Alt, Shift, V
+            user32.keybd_event(vk, 0, 0, 0)
+            time.sleep(0.03)
+        for vk in (0x56, 0x10, 0x12):
+            user32.keybd_event(vk, 0, 2, 0)
+            time.sleep(0.03)
+        deadline = time.monotonic() + 5
+        while "Pasted again." not in box.text() and time.monotonic() < deadline:
+            time.sleep(0.1)
+        assert box.text() == "Text: Pasted again. ", box.text()  # no stray "V" either
+    finally:
+        if box is not None:
+            box.close()
+        control.stop_listener(5)
+        try:
+            listener.wait(10)
+        except subprocess.TimeoutExpired:
+            listener.kill()

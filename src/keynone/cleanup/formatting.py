@@ -246,6 +246,11 @@ _CODE_TOKEN_RE = re.compile(
 _IDENTIFIER_RE = re.compile(r"[@#]?[A-Za-z_][\w.$/\\-]*")
 
 
+def is_program(word: str) -> bool:
+    """A program name that starts a command line ("git", "npm", "docker" ...)."""
+    return word.lower() in _CLI_COMMANDS
+
+
 def looks_like_command(text: str) -> bool:
     """A command line or a lone identifier rather than a sentence: "git status", "npm run
     dev", "cd src", "userName", "@main.py" - but not "git is slow today"."""

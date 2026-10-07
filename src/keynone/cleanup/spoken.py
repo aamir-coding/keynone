@@ -24,7 +24,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Literal
 
-from keynone.cleanup.formatting import lowercase_starter
+from keynone.cleanup.formatting import is_program, lowercase_starter
 
 # How a mark sits between words: "left" sticks to the word before it ("word,"),
 # "right" to the word after it ("(word"), "join" to both ("and/or"), "spaced"
@@ -85,6 +85,7 @@ _MARKS: tuple[_Mark, ...] = tuple(sorted(
     key=lambda mark: -len(mark.words),
 ))
 _FIRST_WORDS = frozenset(mark.words[0] for mark in _MARKS)
+_OPTION = _Mark(("minus",), "-", "right")  # in command lines only: "git commit minus m"
 _CLOSING_QUOTES = frozenset(m.words for m in _MARKS if m.symbol == '"' and m.attach == "left")
 _CLOSERS = ")]}\""  # marks that end something: any word may follow them
 
@@ -391,6 +392,7 @@ _AT_VERBS = frozenset(
     character open opened opens stored saved what what's whats there here""".split()
 )
 _FILE_TOKEN_RE = re.compile(r"[\w./\\-]+\.([A-Za-z0-9]+)")
+_HEARD_AS_PY = frozenset({"pi", "pie", "pye"})
 
 
 def _cased(words: list[str], how: str) -> str:
@@ -443,11 +445,15 @@ def _mentions(tokens: list[_Token]) -> list[_Token]:
     out: list[_Token] = []
     for token in tokens:
         file = _FILE_TOKEN_RE.fullmatch(token.core)
-        if (file and file.group(1).lower() in _EXTENSIONS and not token.lead and out
+        extension = file.group(1).lower() if file else ""
+        core = token.core
+        if extension in _HEARD_AS_PY:  # "at main dot pi": recognizers write "py" as "pi"
+            core, extension = core[:-len(extension)] + "py", "py"
+        if (extension in _EXTENSIONS and not token.lead and out
                 and out[-1].word == "at" and out[-1].bare
                 and (len(out) < 2 or out[-2].word not in _AT_VERBS)):
             at = out.pop()
-            out.append(_Token(at.lead, f"@{token.core}", token.trail))
+            out.append(_Token(at.lead, f"@{core}", token.trail))
             continue
         out.append(token)
     return out
@@ -564,7 +570,7 @@ def _adjust_case(token: _Token, symbol: str) -> _Token:
 
 
 _TRIGGER_RE = re.compile(r"(?i)\b(?:{}|dot|at)\b".format("|".join(sorted(_FIRST_WORDS))))
-_CODE_TRIGGER_RE = re.compile(r"(?i)\b(?:case|camelcase|caps)\b")
+_CODE_TRIGGER_RE = re.compile(r"(?i)\b(?:case|camelcase|caps|minus)\b")
 _SAYING_RE = re.compile(
     r"(?i)\b(?:said|says|say|asked|asks|wrote|writes|replied|replies|answered|answers|told"
     r"|tells|yelled|shouted|whispered|added|adds|thought|goes)\b"
@@ -603,9 +609,14 @@ def convert(text: str, *, style: str = "default", before: str = "") -> Converted
     items: list[_Out] = []
     marks: Counter[str] = Counter()
     case_after = ""
+    # "git commit hyphen m ...": a command line, where a dash starts an option (-m)
+    command_line = code and bool(tokens) and is_program(tokens[0].word)
     i = 0
     while i < len(tokens):
         mark = _match(tokens, i)
+        if (mark is None and command_line and tokens[i].word == "minus" and tokens[i].bare
+                and i + 1 < len(tokens)):
+            mark = _OPTION  # "minus m": the recognizer keeps "minus", unlike "dash"
         if mark is not None and items and not items[-1].mark \
                 and items[-1].text.lower() == "literal":
             items.pop()  # "literal comma": the word itself, as it was said
@@ -613,21 +624,24 @@ def convert(text: str, *, style: str = "default", before: str = "") -> Converted
             i += len(mark.words)
             case_after = ""
             continue
-        if mark is None or _is_word(tokens, i, mark, before):
+        if mark is None or (mark is not _OPTION and _is_word(tokens, i, mark, before)):
             token = _adjust_case(tokens[i], case_after) if case_after else tokens[i]
+            if case_after == "-" and len(token.core) == 1:
+                token = _Token(token.lead, token.core.lower(), token.trail)  # "-M" -> "-m"
             items.append(_Out(token.text))
             case_after = ""
             i += 1
             continue
         symbol, attach = mark.symbol, mark.attach
-        if mark.check == "dash" and style in ("code", "prompt"):
-            symbol, attach = "-", "right"  # "git log dash dash oneline"
+        if (mark.check == "dash" or mark is _OPTION or (command_line and symbol == "-")) \
+                and style in ("code", "prompt"):
+            symbol, attach = "-", "right"  # "git log dash dash oneline", "commit hyphen m"
         if attach == "left" and items and not items[-1].mark:
             # The mark replaces the recognizer's own punctuation before it.
             items[-1].text = items[-1].text.rstrip(AUTO_PUNCT) or items[-1].text
         items.append(_Out(symbol, True, attach))
         marks[symbol] += 1
-        case_after = symbol if symbol in ".?!,;" else ""
+        case_after = symbol if symbol in ".?!,;" or (command_line and symbol == "-") else ""
         i += len(mark.words)
     lead = ""
     for item in items:
