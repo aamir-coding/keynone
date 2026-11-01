@@ -27,7 +27,7 @@ dependencies = [
     # uv does not pick it up from sherpa-onnx's dynamic metadata, and without it
     # Windows' own, older System32\onnxruntime.dll gets loaded instead.
     "sherpa-onnx-core==1.13.8",
-    "tomlkit>=0.13,<0.14",
+    "tomlkit>=0.13,<0.16",
 ]
 
 [project.scripts]
